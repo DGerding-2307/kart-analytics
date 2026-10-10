@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "2.9.0";
+const KART_CARD_VERSION = "3.0.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -408,6 +408,18 @@ for (const c of Object.values(this._heatCache)) add(c.details);
 if (this._archive) for (const e of Object.values(this._archive.heats)) add(e.details);
 return m[key] || "";
 }
+_num(name) {
+const m = this._ka.numbers && this._ka.numbers.data;
+if (!m || !name) return null;
+const e = m[liveName(name).toLowerCase()];
+if (!e) return null;
+return e.sms ? { n: e.sms, src: "sms" } : e.log ? { n: e.log, src: "log" } : null;
+}
+_dno(name) {
+const x = this._num(name);
+if (!x) return "";
+return `<span class="dno ${x.src}" title="${x.src === "sms" ? "Coureursnummer = plek ooit in het SMS-Timing-klassement" : "Coureursnummer = plek in je eigen logger (nog niet in SMS-Timing-top)"}">${x.n}</span>`;
+}
 _av(pid, cls = "av", size = 100) {
 if (!pid) return "";
 const sum = this._ka.summary && this._ka.summary.data;
@@ -649,6 +661,7 @@ if (this._tab === "ranking") this._rankSrc === "own" ? this._loadOwnRanking() : 
 if (this._tab === "analytics") this._loadAnalytics();
 else this._kaGet("summary", "summary", 60000);
 this._kaGet("people", "people", 10 * 60000);
+this._kaGet("numbers", "numbers", 5 * 60000);
 }
 _matches(f, name, personId) {
 if (personId && f.personId && String(personId) === String(f.personId)) return true;
@@ -891,7 +904,7 @@ const myKart = meLive ? meLive.K : "";
 const top = this._kaTop(this._myLiveName());
 const prMs = [myBestMs, this._myBestMs()].filter((x) => x > 0).reduce((a, b) => Math.min(a, b), Infinity);
 const hero = `<div class="hero" style="--team:${myKart ? teamColor(myKart) : "var(--f1-red)"}">
-${this._av(String(this._config.person_id || ""), "hero-av", 200)}${meEver ? `<div class="hero-num">${esc(meEver.position)}</div>` : ""}
+${this._av(String(this._config.person_id || ""), "hero-av", 200)}${(() => { const n = meEver ? meEver.position : (this._num(meName) || {}).n; return n ? `<div class="hero-num">${esc(n)}</div>` : ""; })()}
 <div class="hero-id"><div class="hero-tla">${esc(tla(meName))}</div><div class="hero-name">${esc(meName)}</div>
 <div class="hero-tags">${meLive ? `<span class="htag live">LIVE · P${esc(meLive.P)} · KART ${esc(meLive.K)}</span>` : ""}${top ? `<span class="htag">TOP ${top.pct}%</span>` : ""}${meEver ? `<span class="htag">P${esc(meEver.position)} OOIT</span>` : ""}</div></div>
 <div class="hero-time"><div class="hero-label">PERSOONLIJK RECORD</div><div class="hero-lap">${isFinite(prMs) ? fmtLap(prMs) : "–"}</div>
@@ -959,7 +972,7 @@ const bestHtml = best
 ? `<div class="tvalue">${fmtLap(best.ms)}</div><div class="tsub">${esc(best.src)} · ${fmtDate(best.date, false)}</div>`
 : `<div class="tvalue muted">–</div><div class="tsub">${pending ? "zoeken…" : "niet in een top 10 of gedeelde heat"}</div>`;
 return `<div class="fcard ${live ? "islive" : ""}" style="--team:${live ? teamColor(live.K) : "var(--f1-follow)"}">
-<div class="fh">${this._av(f.personId || this._pidFor(f.name), "fav")}<span class="ftla">${esc(tla(f.name))}</span><span class="fname">${esc(f.name)}</span>
+<div class="fh">${this._av(f.personId || this._pidFor(f.name), "fav")}<span class="ftla">${esc(tla(f.name))}</span>${this._dno(f.name)}<span class="fname">${esc(f.name)}</span>
 ${live ? `<span class="fbadge">LIVE P${esc(live.P)}</span>` : ""}
 ${best && best.pos ? `<span class="fpos">P${esc(best.pos)} ooit</span>` : ""}
 ${(() => { const t = this._kaTop(f.name); return t ? `<span class="fpos" title="plek ${t.rank} van ${t.total} (eigen logger)">top ${t.pct}%</span>` : ""; })()}
@@ -1003,7 +1016,7 @@ let lastCls = "";
 if (last > 0) lastCls = last === fastest ? "purple" : last === best ? "green" : "yellow";
 return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}" style="--team:${teamColor(d.K)}">
 <div class="tpos">${esc(d.P)}</div>${this._posArrow(d)}
-<div class="tname"><span class="stripe"></span>${this._av(this._pidFor(d.N))}<b class="tla">${esc(tla(d.N))}</b><span class="full">${esc(d.N)}</span>${me ? `<span class="tag">JIJ</span>` : ""}</div>
+<div class="tname"><span class="stripe"></span>${this._av(this._pidFor(d.N))}${this._dno(d.N)}<b class="tla">${esc(tla(d.N))}</b><span class="full">${esc(d.N)}</span>${me ? `<span class="tag">JIJ</span>` : ""}</div>
 <div class="tk"><span class="carno">${esc(d.K)}</span></div>
 <div class="tl">${esc(d.L)}</div>
 <div class="tt ${lastCls}">${fmtLap(d.T)}</div>
@@ -1069,7 +1082,7 @@ const name = `${p.firstName || ""} ${p.name || ""}`.trim();
 const fol = this._isFollowed(name, p.personId);
 return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
 <div class="tpos">${esc(p.position)}</div>
-<div class="tname">${this._av(p.personId)}${esc(name)}${me ? `<span class="tag">JIJ</span>` : ""}</div>
+<div class="tname">${this._av(p.personId)}${this._dno(name)}${esc(name)}${me ? `<span class="tag">JIJ</span>` : ""}</div>
 <div class="tt ${Number(p.scoreDefault) === fastest ? "purple" : ""}">${Number(p.scoreDefault) > 0 ? esc(p.score) : "–"}</div>
 <div class="tg">${Number(p.scoreDefault) > 0 && fastest ? (Number(p.scoreDefault) === fastest ? "" : fmtDelta(Number(p.scoreDefault) - fastest)) : ""}</div>
 <div class="tf">${me ? "" : this._followBtn(name, p.personId)}</div>
@@ -1172,7 +1185,7 @@ const ms = scoreToMs(r.score);
 const pc = r.position <= 3 ? ` p${r.position}` : "";
 return `${gap}<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
 <div class="tpos${pc}">${esc(r.position)}</div>
-<div class="tname">${this._av(r.personId)}${esc(r.participant)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">${fmtDate(r.date, false)} · kart ${esc(r.kart ?? "")}</div></div>
+<div class="tname">${this._av(r.personId)}${this._dno(r.participant)}${esc(r.participant)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">${fmtDate(r.date, false)} · kart ${esc(r.kart ?? "")}</div></div>
 <div class="tt ${r.position === 1 ? "purple" : ""}">${esc(r.score)}</div>
 <div class="tg">${r.position === 1 || !leaderMs ? "" : fmtDelta(ms - leaderMs)}</div>
 <div class="tf">${me ? "" : this._followBtn(r.participant, r.personId)}</div>
@@ -1212,7 +1225,7 @@ const fol = !me && this._isFollowed(r.driver, "");
 const pc = i < 3 ? ` p${i + 1}` : "";
 return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
 <div class="tpos${pc}">${i + 1}</div>
-<div class="tname">${this._av(this._pidFor(r.driver))}${esc(r.driver)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">top ${Math.max(1, Math.ceil(((i + 1) / rows.length) * 100))}% · ${r.heats} heat${r.heats === 1 ? "" : "s"} · ${r.laps} rondes · ${fmtAgo(r.last)}</div></div>
+<div class="tname">${this._av(this._pidFor(r.driver))}${this._dno(r.driver)}${esc(r.driver)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">top ${Math.max(1, Math.ceil(((i + 1) / rows.length) * 100))}% · ${r.heats} heat${r.heats === 1 ? "" : "s"} · ${r.laps} rondes · ${fmtAgo(r.last)}</div></div>
 <div class="tt ${i === 0 ? "purple" : ""}">${fmtLap(r.best)}</div>
 <div class="tg">${i === 0 ? "" : fmtDelta(r.best - lead)}</div>
 <div class="tf">${me ? "" : this._followBtn(r.driver, "")}</div>
@@ -1458,6 +1471,12 @@ text-transform:uppercase; letter-spacing:.5px; padding:5px 12px; cursor:pointer;
 .btn { font-style:italic; text-transform:uppercase; letter-spacing:.5px; clip-path:polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%); padding-right:20px; }
 .heat { background:linear-gradient(90deg, #1e1e28, #15151c); clip-path:polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
 .pbadge { transform:skewX(-12deg); }
+/* ---------- coureursnummer ---------- */
+.dno { display:inline-block; min-width:34px; text-align:center; font-weight:900; font-style:italic; font-size:.95em; line-height:1.25;
+ padding:0 6px; margin-right:8px; transform:skewX(-12deg); vertical-align:middle; font-variant-numeric:tabular-nums; }
+.dno.sms { background:#fff; color:#111; }
+.dno.log { background:transparent; color:#fff; box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.6); }
+.fh .dno { font-size:1.15em; }
 /* ---------- profielfoto's ---------- */
 .av { width:26px; height:26px; object-fit:cover; border-radius:50%; vertical-align:middle; margin-right:8px; border:2px solid var(--team, #fff); background:#222; flex:none; }
 .tname .av { margin-top:-3px; }

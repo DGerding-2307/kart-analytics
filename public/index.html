@@ -66,6 +66,53 @@ tr.click:hover td{background:var(--panel2)}
 .advice b{font-size:22px}
 #tip{position:fixed;pointer-events:none;background:#000d;border:1px solid var(--line);padding:6px 9px;border-radius:6px;font-size:12px;display:none;z-index:9;white-space:pre}
 @media (max-width:640px){.g2{grid-template-columns:1fr}main{padding:12px}header{padding:10px 12px}.filters{margin-left:0}}
+/* ================= F1 broadcast-laag ================= */
+body{background:
+  radial-gradient(ellipse at top,rgba(225,6,0,.10),transparent 55%),
+  repeating-linear-gradient(45deg,rgba(255,255,255,.018) 0 2px,transparent 2px 4px),
+  repeating-linear-gradient(-45deg,rgba(0,0,0,.25) 0 2px,transparent 2px 4px),#0f0f15}
+header{background:linear-gradient(100deg,#0b0b10 0,#0b0b10 58%,var(--red) 58.2%,var(--red) 61%,#0b0b10 61.2%);border-bottom:none;position:sticky;overflow:hidden}
+header::after{content:"";position:absolute;right:0;top:0;bottom:0;width:150px;pointer-events:none;
+  background:conic-gradient(#fff 25%,#111 0 50%,#fff 0 75%,#111 0) 0 0/14px 14px;-webkit-mask:linear-gradient(90deg,transparent,#000 75%);mask:linear-gradient(90deg,transparent,#000 75%)}
+header>*{position:relative;z-index:1}
+.filters{margin-right:150px}
+.logo{font-size:26px;letter-spacing:1px}
+nav{border-bottom:2px solid var(--red);padding:6px 20px;gap:6px;background:#0b0b10}
+nav button{transform:skewX(-14deg);background:#1b1b24;border-bottom:none;font-style:italic;padding:9px 18px}
+nav button.act{background:var(--red);color:#fff;box-shadow:0 0 16px rgba(225,6,0,.45)}
+nav button:hover:not(.act){background:#262632;color:#fff}
+.card{border-left:none;border-top:3px solid var(--red);background:linear-gradient(160deg,#21212c,#16161d);
+  clip-path:polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%)}
+.card.plain{border-top-color:var(--line)}
+.card h2{display:inline-block;background:linear-gradient(90deg,var(--red),#8a0400);padding:3px 14px 3px 10px;transform:skewX(-12deg);font-style:italic;font-weight:900}
+.card h2 small{color:#ffd0cd}
+.card h2.plainh{background:none;transform:none;padding:0}
+.kpi .v{font-style:italic;font-weight:900}
+.kpi .l{font-weight:700}
+select,button,input{border-radius:0}
+button{font-style:italic;text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+th{color:#fff;font-style:italic;background:none}
+thead tr{background:linear-gradient(90deg,#b00500,#5a0200 45%,transparent 90%)}
+.advice div{border-radius:0;border-top:3px solid var(--red);clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%)}
+.advice b{font-style:italic;font-weight:900}
+tbody tr:nth-child(odd) td{background:rgba(255,255,255,.02)}
+td{border-bottom:1px solid #22222d}
+.kno{border-radius:0;transform:skewX(-12deg);font-style:italic}
+.pill{border-radius:0;transform:skewX(-12deg);font-style:italic}
+.dno{display:inline-block;min-width:36px;text-align:center;font-weight:900;font-style:italic;padding:0 6px;margin-right:8px;transform:skewX(-12deg);font-variant-numeric:tabular-nums}
+.dno.sms{background:#fff;color:#111}
+.dno.log{color:#fff;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.55)}
+.dno.none{background:transparent}
+.who{display:inline-flex;align-items:center;white-space:nowrap}
+.who .av{width:24px;height:24px;border-radius:50%;object-fit:cover;margin-right:8px;border:2px solid var(--red);background:#222}
+.who .tla{font-style:italic;font-weight:900;letter-spacing:1px;margin-right:8px}
+.who .nm{color:var(--muted);font-size:.9em}
+.who.big .dno{font-size:26px;min-width:60px}
+.who.big .av{width:56px;height:56px}
+.who.big .tla{font-size:28px}
+.who.big .nm{font-size:16px}
+.chart{background:linear-gradient(180deg,rgba(255,255,255,.02),transparent)}
+@media (max-width:640px){.filters{margin-right:0}header::after{width:60px}.who .nm{display:none}}
 </style>
 </head>
 <body>
@@ -250,6 +297,26 @@ window.go = (view, arg = null) => {
   render();
 };
 const kno = (k) => `<span class="kno">${esc(k)}</span>`;
+/* coureursnummer + foto + F1-code */
+const meta = { numbers: {}, people: {}, photos: false };
+const nkey = (n) => { const w = String(n || "").trim().toLowerCase().split(/\s+/).filter(Boolean); return !w.length ? "" : w.length === 1 ? w[0] : `${w[0]} ${w[w.length - 1].charAt(0)}.`; };
+const code3 = (n) => (String(n || "").trim().split(/\s+/)[0] || "").replace(/[^A-Za-zÀ-ÿ]/g, "").slice(0, 3).toUpperCase();
+function dno(name) {
+  const e = meta.numbers[nkey(name)];
+  if (!e) return `<span class="dno none"></span>`;
+  return e.sms ? `<span class="dno sms" data-tip="Coureursnummer: plek ooit in het SMS-Timing-klassement">${e.sms}</span>` : `<span class="dno log" data-tip="Coureursnummer: plek in de eigen logger">${e.log}</span>`;
+}
+function who(name, big) {
+  const pid = meta.people[nkey(name)];
+  const img = pid && meta.photos ? `<img class="av" src="api/photo/${esc(pid)}?size=100" alt="" loading="lazy" onerror="this.remove()">` : "";
+  return `<span class="who${big ? " big" : ""}">${dno(name)}${img}<b class="tla">${esc(code3(name))}</b><span class="nm">${esc(name)}</span></span>`;
+}
+async function loadMeta() {
+  try {
+    const [n, p] = await Promise.all([fetch("api/numbers").then((r) => r.json()), fetch("api/people").then((r) => r.json())]);
+    meta.numbers = n || {}; meta.people = p || {};
+  } catch (_) {}
+}
 const me = () => store.get("me", "");
 const follows = () => store.get("follow", []);
 window.setMe = (n) => { store.set("me", n); render(); };
@@ -286,7 +353,7 @@ async function vOverview() {
     const fast = Math.min(...rows.map((r) => Number(r.B) || 1e9));
     liveHtml = `<div class="muted" style="margin-bottom:8px"><b style="color:#fff">${esc(L.N)}</b></div>` + table("live", [
       { k: "P", t: "Pos", f: (r) => `<b>${esc(r.P)}</b>` },
-      { k: "N", t: "Coureur" },
+      { k: "N", t: "Coureur", f: (r) => who(r.N) },
       { k: "K", t: "Kart", f: (r) => kno(r.K) },
       { k: "L", t: "Ronde", r: 1 },
       { k: "T", t: "Laatste", r: 1, f: (r) => fmt(r.T) },
@@ -311,7 +378,7 @@ async function vOverview() {
       ${mine ? `<div class="advice"><div><div class="muted">Beste</div><b class="purple">${fmt(mine.best)}</b></div><div><div class="muted">Mediaan</div><b>${fmt(mine.median)}</b></div><div><div class="muted">Constantheid (σ)</div><b>${fmt(mine.std)}</b></div><div><div class="muted">Heats</div><b>${mine.heats}</b></div></div>
       <div style="margin-top:10px"><button onclick="go('driver',${js(myName)})">Mijn analyse →</button></div>` : `<div class="hint">${myName ? "In deze periode nog geen rondes van jou gelogd." : "Kies jezelf in de coureurslijst om hier je eigen cijfers te zien."}</div>`}
       ${follows().length ? `<h2 style="margin-top:16px">Gevolgd</h2>` + table("fol", [
-        { k: "driver", t: "Coureur" }, { k: "best", t: "Beste", r: 1, f: (r) => fmt(r.best) },
+        { k: "driver", t: "Coureur", f: (r) => who(r.driver) }, { k: "best", t: "Beste", r: 1, f: (r) => fmt(r.best) },
         { k: "diff", t: "Verschil met jou", r: 1, f: (r) => (mine && r.best ? `<span class="${r.best < mine.best ? "red" : "green"}">${fmtD(r.best - mine.best)}</span>` : "–") },
         { k: "last", t: "Laatst gezien", r: 1, f: (r) => ago(r.last) }],
         follows().map((n) => d.find((x) => x.driver === n) || { driver: n }), (r) => `go('driver',${js(r.driver)})`) : ""}
@@ -382,8 +449,8 @@ async function vKart(kart) {
     <div class="card"><h2>Verdeling rondetijden</h2>${histogram(clean.map((l) => l.ms))}<div class="hint">Een smalle piek = voorspelbare kart. Een lange staart naar rechts kan wijzen op een technisch probleem.</div></div>
   </div>
   <div class="grid g2" style="margin-top:16px">
-    <div class="card"><h2>Rijders in deze kart</h2>${table("kd", [{ k: "driver", t: "Coureur" }, { k: "laps", t: "Rondes", r: 1 }, { k: "best", t: "Beste", r: 1, f: (r) => fmt(r.best) }, { k: "median", t: "Mediaan", r: 1, f: (r) => fmt(r.median) }], drows.sort((a, b) => a.best - b.best), (r) => `go('driver',${js(r.driver)})`)}</div>
-    <div class="card"><h2>Top 10 rondes</h2>${table("kt", [{ k: "ms", t: "Tijd", f: (r) => `<b class="purple">${fmt(r.ms)}</b>` }, { k: "driver", t: "Coureur" }, { k: "ts", t: "Wanneer", f: (r) => fmtDate(r.ts) }, { k: "heat", t: "Heat" }], top)}</div>
+    <div class="card"><h2>Rijders in deze kart</h2>${table("kd", [{ k: "driver", t: "Coureur", f: (r) => who(r.driver) }, { k: "laps", t: "Rondes", r: 1 }, { k: "best", t: "Beste", r: 1, f: (r) => fmt(r.best) }, { k: "median", t: "Mediaan", r: 1, f: (r) => fmt(r.median) }], drows.sort((a, b) => a.best - b.best), (r) => `go('driver',${js(r.driver)})`)}</div>
+    <div class="card"><h2>Top 10 rondes</h2>${table("kt", [{ k: "ms", t: "Tijd", f: (r) => `<b class="purple">${fmt(r.ms)}</b>` }, { k: "driver", t: "Coureur", f: (r) => who(r.driver) }, { k: "ts", t: "Wanneer", f: (r) => fmtDate(r.ts) }, { k: "heat", t: "Heat" }], top)}</div>
   </div>`;
 }
 
@@ -396,7 +463,7 @@ async function vDrivers() {
   <input placeholder="Zoek coureur…" value="${esc(store.get("dq", ""))}" oninput="store.set('dq',this.value);clearTimeout(window._dq);window._dq=setTimeout(render,250)" style="margin-bottom:10px;width:260px">
   ${table("drv", [
     { k: "rank", t: "#", v: (r) => r.best, f: (r, i) => i + 1 },
-    { k: "driver", t: "Coureur", f: (r) => `${esc(r.driver)}${r.driver === m ? ' <span class="pill" style="background:var(--red)">JIJ</span>' : ""}${f.includes(r.driver) ? ' <span class="pill">volg</span>' : ""}` },
+    { k: "driver", t: "Coureur", f: (r) => `${who(r.driver)}${r.driver === m ? ' <span class="pill" style="background:var(--red)">JIJ</span>' : ""}${f.includes(r.driver) ? ' <span class="pill">volg</span>' : ""}` },
     { k: "best", t: "Beste", r: 1, f: (r) => `<span class="purple">${fmt(r.best)}</span>` },
     { k: "median", t: "Mediaan", r: 1, f: (r) => fmt(r.median) },
     { k: "std", t: "Constantheid σ", r: 1, f: (r) => fmt(r.std) },
@@ -417,7 +484,7 @@ async function vDriver(name) {
   const kIdx = new Map(karts.karts.map((k) => [k.kart, k.driverCorrectedMs ?? k.heatIndexMs]));
   return `
   <button class="back" onclick="history.back()">← Terug</button>
-  <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font-size:22px">${esc(name)}</h2>
+  <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 class="plainh" style="margin:0;font-size:22px">${who(name, true)}</h2>
     <button onclick="setMe(${isMe ? "''" : `${js(name)}`})">${isMe ? "✓ Dit ben ik" : "Dit ben ik"}</button>
     ${isMe ? "" : `<button onclick="toggleFollow(${js(name)})">${isF ? "✓ Gevolgd" : "☆ Volgen"}</button>`}</div>
   <div class="grid g4" style="margin-top:16px">
@@ -454,7 +521,7 @@ async function vHeat(id) {
   <div class="card"><h2>${esc(h.name)}</h2>${chart(series, { h: 320, xFmt: (v) => "R" + v })}
   <div class="legend">${ps.map((p, i) => `<span><i style="background:${PALETTE[i % PALETTE.length]}"></i>${esc(p.driver)} (#${esc(p.kart)})</span>`).join("")}</div></div>
   <div class="card" style="margin-top:16px"><h2>Uitslag op snelste ronde</h2>${table("hp", [
-    { k: "i", t: "#", f: (r, i) => i + 1 }, { k: "driver", t: "Coureur" }, { k: "kart", t: "Kart", f: (r) => kno(r.kart) },
+    { k: "i", t: "#", f: (r, i) => i + 1 }, { k: "driver", t: "Coureur", f: (r) => who(r.driver) }, { k: "kart", t: "Kart", f: (r) => kno(r.kart) },
     { k: "best", t: "Beste", r: 1, f: (r) => `<span class="${r.best === fastest ? "purple" : ""}">${fmt(r.best)}</span>` },
     { k: "gap", t: "Verschil", r: 1, v: (r) => r.best - fastest, f: (r) => (r.best === fastest ? "" : fmtD(r.best - fastest)) },
     { k: "laps", t: "Rondes", r: 1, v: (r) => r.laps.length, f: (r) => r.laps.length },
@@ -520,7 +587,8 @@ $("#group").onchange = (e) => { state.group = e.target.value; store.set("group",
 $("#csv").onclick = () => { location.href = `api/export.csv?period=${state.period}&group=${encodeURIComponent(state.group)}`; };
 window.store = store;
 fromHash();
-refreshStatus().then(render);
+Promise.all([refreshStatus(), loadMeta()]).then(() => { meta.photos = !!(summary && summary.photos); render(); });
+setInterval(loadMeta, 5 * 60000);
 setInterval(refreshStatus, 10000);
 // overzicht en live-heat elke 15 s verversen
 setInterval(() => { if (state.view === "overview" || state.view === "heat") render(); }, 15000);

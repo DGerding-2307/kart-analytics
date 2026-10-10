@@ -27,7 +27,7 @@ const CFG = {
   smsApi: process.env.SMS_API || "https://mobile-api7.sms-timing.com/api",
   smsClient: process.env.SMS_CLIENT || "kartenfunfabriek",
 };
-const VERSION = "1.3.0";
+const VERSION = "1.4.0";
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -409,7 +409,7 @@ function driverStats(opts) {
     if (r.flag === "clean") d.clean.push(r.lap_ms);
   }
   return [...m.values()]
-    .map((d) => ({ driver: d.driver, laps: d.laps, heats: d.heats.size, karts: d.karts.size, best: d.clean.length ? Math.min(...d.clean) : null, median: median(d.clean), std: std(d.clean), last: d.last }))
+    .map((d) => ({ key: nameKey(d.driver), driver: d.driver, laps: d.laps, heats: d.heats.size, karts: d.karts.size, best: d.clean.length ? Math.min(...d.clean) : null, median: median(d.clean), std: std(d.clean), last: d.last }))
     .sort((a, b) => (a.best ?? 1e9) - (b.best ?? 1e9));
 }
 
@@ -552,6 +552,10 @@ function nameKey(n) {
   if (!w.length) return "";
   return w.length === 1 ? w[0] : `${w[0]} ${w[w.length - 1].charAt(0)}.`;
 }
+try {
+  db.exec("ALTER TABLE people ADD COLUMN ever_pos INTEGER");
+} catch (_) {}
+const peoplePos = db.prepare("UPDATE people SET ever_pos = ? WHERE key = ?");
 const peopleUpsert = db.prepare(
   "INSERT INTO people (key, name, person_id, seen) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET name = excluded.name, person_id = excluded.person_id, seen = excluded.seen"
 );
@@ -583,6 +587,8 @@ async function refreshPeople() {
           const k = nameKey(row.participant);
           if (k && row.personId) {
             peopleUpsert.run(k, String(row.participant), String(row.personId), Date.now());
+            // plek in het klassement 'ooit' (volwassenen) = coureursnummer
+            if (!st && scg === "117858" && Number(row.position) > 0) peoplePos.run(Number(row.position), k);
             n++;
           }
         }
@@ -593,6 +599,19 @@ async function refreshPeople() {
   }
   peopleCache = null;
   log(`namenlijst bijgewerkt (${n} regels, ${Object.keys(peopleMap()).length} personen)`);
+}
+/** coureursnummer per naam: plek ooit in SMS-Timing (sms) of anders plek in de eigen logger (log) */
+function driverNumbers() {
+  const out = {};
+  const rank = driverStats({ since: 0, grp: "Volwassenen" }).filter((d) => d.best);
+  rank.forEach((d, i) => {
+    const k = nameKey(d.driver);
+    if (k && !out[k]) out[k] = { sms: null, log: i + 1 };
+  });
+  for (const r of db.prepare("SELECT key, ever_pos FROM people WHERE ever_pos IS NOT NULL").all()) {
+    out[r.key] = { ...(out[r.key] || { log: null }), sms: r.ever_pos };
+  }
+  return out;
 }
 function liveWithPeople() {
   const snap = live.lastSnapshot;
@@ -645,6 +664,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/summary") return send(res, 200, summary());
     if (p === "/api/live") return send(res, 200, { state: live.state, at: live.lastMessage, snapshot: liveWithPeople() });
     if (p === "/api/people") return send(res, 200, peopleMap());
+    if (p === "/api/numbers") return send(res, 200, driverNumbers());
     if (p === "/api/karts") return send(res, 200, kartStats(opts));
     if (p.startsWith("/api/kart/")) return send(res, 200, kartDetail(decodeURIComponent(p.slice(10)), opts));
     if (p === "/api/drivers") return send(res, 200, driverStats(opts));
