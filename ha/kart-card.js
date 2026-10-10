@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.2.0";
+const KART_CARD_VERSION = "3.3.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -1026,23 +1026,20 @@ return `<div class="strip on" data-action="goto" data-tab="live">
 </div>`;
 }
 _renderFollowPanel() {
-if (!this._follows.length) {
-return `<div class="follow empty-f">
-<div class="fh">Coureurs volgen</div>
-<div class="muted">Tik op ☆ naast een naam in Live, Heats of Klassement om iemand te volgen. Je kunt meerdere coureurs volgen.</div>
-</div>`;
-}
 const myPid = String(this._config.person_id || "");
+const myName = this._myLiveName() || "Jij";
 const myBest = this._myBestMs();
 const heats = (this._heats.data || []).slice(0, DETAIL_LOOKBACK);
 const pending = heats.some((h) => this._heatCache[h.id] && this._heatCache[h.id].promise) || Object.values(this._ranking).some((c) => c.promise);
-const cards = this._follows
-.map((f) => {
-const live = this._liveDrivers().find((d) => this._matches(f, d.N, ""));
+const grp = String(this._config.score_group);
+const ever = this._ranking[this._rankKey(grp, "ever")] || {};
+const meEver = ever.rows && myPid ? ever.rows.find((r) => String(r.personId) === myPid) : null;
+const meLive = this._liveDrivers().find((d) => sameName(d.N, myName));
+const rows = [
+{ me: true, name: myName, pid: myPid, best: myBest ? { ms: myBest } : null, live: meLive, pos: meEver ? meEver.position : null },
+...this._follows.map((f) => {
 const best = this._bestFor(f);
-const recLaps = this._liveLapCount(this._knownKey(f));
-let shared = 0,
-ahead = 0;
+let shared = 0, ahead = 0;
 for (const h of heats) {
 const c = this._heatCache[h.id];
 if (!c || !c.details || !Array.isArray(c.details.participants)) continue;
@@ -1053,40 +1050,40 @@ if (!them || !me || them === me) continue;
 shared++;
 if ((me.position || 99) < (them.position || 99)) ahead++;
 }
-let diffHtml = `<div class="tvalue muted">–</div><div class="tsub">${pending ? "zoeken…" : myBest ? "nog geen tijd bekend" : "jouw tijd onbekend"}</div>`;
-if (best && myBest) {
-const d = best.ms - myBest;
-const cls = d > 0 ? "green" : d < 0 ? "red" : "";
-const abs = (Math.abs(d) / 1000).toFixed(3);
-const txt = d > 0 ? `jij bent ${abs} s sneller` : d < 0 ? `${abs} s sneller dan jij` : "precies gelijk";
-diffHtml = `<div class="tvalue ${cls}">${fmtDelta(d)}</div><div class="tsub">${txt}</div>`;
-}
-const bestHtml = best
-? `<div class="tvalue">${fmtLap(best.ms)}</div><div class="tsub">${esc(best.src)} · ${fmtDate(best.date, false)}</div>`
-: `<div class="tvalue muted">–</div><div class="tsub">${pending ? "zoeken…" : "niet in een top 10 of gedeelde heat"}</div>`;
-return `<div class="fcard ${live ? "islive" : ""}" style="--team:${live ? teamColor(live.K) : "var(--f1-follow)"}">
-<div class="fh">${this._av(f.personId || this._pidFor(f.name), "fav")}<span class="ftla">${esc(tla(f.name))}</span>${this._dno(f.name)}<span class="fname">${esc(f.name)}</span>
-${live ? `<span class="fbadge">LIVE P${esc(live.P)}</span>` : ""}
-${best && best.pos ? `<span class="fpos">P${esc(best.pos)} ooit</span>` : ""}
-${(() => { const t = this._kaTop(f.name); return t ? `<span class="fpos" title="plek ${t.rank} van ${t.total} (eigen logger)">top ${t.pct}%</span>` : ""; })()}
-${recLaps ? `<span class="fpos">${recLaps} ronden opgeslagen</span>` : ""}
-<button class="star on" title="Niet meer volgen" data-action="unfollow" data-name="${esc(f.name)}" data-pid="${esc(f.personId || "")}">★</button></div>
-<div class="fgrid">
-<div class="fstat"><div class="tlabel">Beste ronde</div>${bestHtml}</div>
-<div class="fstat"><div class="tlabel">Verschil met jou</div>${diffHtml}</div>
-<div class="fstat ${live ? "live" : ""}"><div class="tlabel">${live ? "Nu live" : "Onderling"}</div>${
-live
-? `<div class="tvalue">${fmtLap(live.T)}</div><div class="tsub">laatste · beste ${fmtLap(live.B)}</div>`
-: shared
-? `<div class="tvalue">${ahead}–${shared - ahead}</div><div class="tsub">${shared} gedeelde heat${shared > 1 ? "s" : ""}</div>`
-: `<div class="tvalue muted">–</div><div class="tsub">nog niet samen gereden</div>`
-}</div>
-</div>
+return { f, name: f.name, pid: f.personId || this._pidFor(f.name), best, live: this._liveDrivers().find((d) => this._matches(f, d.N, "")), pos: best && best.pos, shared, ahead };
+}),
+].sort((x, y) => (x.best ? x.best.ms : 1e12) - (y.best ? y.best.ms : 1e12));
+const lead = rows[0] && rows[0].best ? rows[0].best.ms : 0;
+const html = rows
+.map((r, i) => {
+const ms = r.best ? r.best.ms : 0;
+const t = this._kaTop(r.name);
+const meta = [
+r.live ? `<span class="fbadge">LIVE P${esc(r.live.P)} · ${fmtLap(r.live.T)}</span>` : "",
+r.pos ? `P${esc(r.pos)} ooit` : "",
+t ? `top ${t.pct}%` : "",
+!r.me && r.shared ? `onderling ${r.ahead}–${r.shared - r.ahead}` : "",
+!r.me && r.best && r.best.src ? esc(r.best.src) : "",
+!ms ? (pending ? "zoeken…" : "nog geen tijd bekend") : "",
+].filter(Boolean).join(" · ");
+const vsMe = r.me || !ms || !myBest ? "" : `<span class="${ms < myBest ? "red" : "green"}">${fmtDelta(ms - myBest)}</span>`;
+const pc = i < 3 && ms ? ` p${i + 1}` : "";
+return `<div class="trow frow ${r.me ? "me" : "fol"} ${r.live ? "islive" : ""}" style="--team:${r.live ? teamColor(r.live.K) : r.me ? "var(--f1-red)" : "var(--f1-follow)"}">
+<div class="tpos${pc}">${ms ? i + 1 : "–"}</div>
+<div class="tname">${this._av(r.pid, "av fav-s")}${this._dno(r.name)}<b class="tla">${esc(tla(r.name))}</b><span class="full">${esc(r.name)}</span>${r.me ? `<span class="tag">JIJ</span>` : ""}
+<div class="muted small fmeta">${meta}</div></div>
+<div class="tt ${i === 0 && ms ? "purple" : ""}">${fmtLap(ms)}</div>
+<div class="tg" title="achterstand op P1 van deze lijst">${i === 0 || !ms || !lead ? "" : fmtDelta(ms - lead)}</div>
+<div class="tg" title="verschil met jou">${vsMe}</div>
+<div class="tf">${r.me ? "" : `<button class="star on" title="Niet meer volgen" data-action="unfollow" data-name="${esc(r.f.name)}" data-pid="${esc(r.f.personId || "")}">★</button>`}</div>
 </div>`;
 })
 .join("");
-return `<div class="section-h"><span>Gevolgde coureurs</span><span class="muted small">jouw beste: ${fmtLap(myBest)}${(() => { const t = this._kaTop(this._myLiveName()); return t ? ` · top ${t.pct}%` : ""; })()}</span></div>
-<div class="follows">${cards}</div>`;
+const hint = this._follows.length ? "" : `<div class="muted small" style="margin-top:6px">Tik op ☆ naast een naam in Live, Heats of Klassement om coureurs aan deze ranglijst toe te voegen.</div>`;
+return `<div class="section-h"><span>Mijn ranglijst</span><span class="muted small">jij + ${this._follows.length} gevolgd · op beste ronde</span></div>
+<div class="tower ftower">
+<div class="trow head"><div class="tpos">P</div><div class="tname">Coureur</div><div class="tt">Beste</div><div class="tg">Interval</div><div class="tg">Δ jij</div><div class="tf"></div></div>
+${html}</div>${hint}`;
 }
 _renderLive() {
 const st = this._wsState;
@@ -1571,6 +1568,15 @@ text-transform:uppercase; letter-spacing:.5px; padding:5px 12px; cursor:pointer;
 .btn { font-style:italic; text-transform:uppercase; letter-spacing:.5px; clip-path:polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%); padding-right:20px; }
 .heat { background:linear-gradient(90deg, #1e1e28, #15151c); clip-path:polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
 .pbadge { transform:skewX(-12deg); }
+/* ---------- mijn ranglijst ---------- */
+.ftower .trow { padding-top:8px; padding-bottom:8px; }
+.ftower .tname { white-space:normal; }
+.ftower .fmeta { text-transform:none; font-style:italic; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ftower .fbadge { font-size:.85em; }
+.ftower .trow.islive { background:linear-gradient(90deg, rgba(0,163,224,.28), #1e1e28 60%); }
+.ftower .trow.me, .ftower .trow.me.islive { background:linear-gradient(90deg, rgba(225,6,0,.45), #1e1e28 60%); border-left-color:var(--f1-red); }
+.ftower .tg { width:74px; }
+.av.fav-s { width:30px; height:30px; }
 /* ---------- coureursnummer ---------- */
 .dno { display:inline-block; min-width:34px; text-align:center; font-weight:900; font-style:italic; font-size:.95em; line-height:1.25;
  padding:0 6px; margin-right:8px; transform:skewX(-12deg); vertical-align:middle; font-variant-numeric:tabular-nums; }
