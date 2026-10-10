@@ -1,9 +1,10 @@
 # Kart Analytics – Dockge / docker compose
 #
-# Plak dit in Dockge als nieuwe stack "kart-analytics" en klik op Deploy.
+# Portainer: Stacks → + Add stack → naam "kart-analytics" → Web editor → plak dit → Deploy the stack.
+# (Werkt ook in Dockge.)
 # - De code wordt bij de eerste start van GitHub gehaald en daarna elk uur automatisch bijgewerkt.
 # - Watchtower houdt de Node.js-basisimage (beveiligingsupdates) bij.
-# - Alle rondes staan in ./data/kart.db en blijven bewaard bij updates en herstarts.
+# - Alle rondes staan in /mnt/user/appdata/kart-analytics/data/kart.db en blijven bewaard bij updates en herstarts.
 #
 # Analysescherm: http://<ip-van-je-unraid>:8095
 
@@ -22,8 +23,8 @@ services:
       AUTO_UPDATE: "true"
       UPDATE_INTERVAL_MIN: "60"
     volumes:
-      - ./data:/data
-      - ./app:/app
+      - /mnt/user/appdata/kart-analytics/data:/data
+      - /mnt/user/appdata/kart-analytics/app:/app
     working_dir: /app
     command:
       - sh

@@ -10,14 +10,16 @@ Logt 24/7 elke ronde van de live timing van **Kart en Fun Fabriek (Assen)** en l
 
 Geen externe npm-pakketten: alleen ingebouwde Node.js-modules (Node 22.13+).
 
-## Installeren met Dockge (Unraid)
+## Installeren met Portainer (Unraid)
 
-1. Open Dockge → **+ Compose**.
-2. Stacknaam: `kart-analytics`.
-3. Plak de inhoud van [`compose.yaml`](compose.yaml) en klik **Deploy**.
+1. Open Portainer → kies je omgeving (meestal *local*) → **Stacks** → **+ Add stack**.
+2. Naam: `kart-analytics`, bouwmethode **Web editor**.
+3. Plak de inhoud van [`compose.yaml`](compose.yaml) en klik **Deploy the stack**.
 4. Open `http://<ip-van-je-unraid>:8095`.
 
-De map `/opt/stacks/kart-analytics/data` bevat de database. Die blijft staan bij updates en herstarts; maak er gerust een back-up van.
+Dockge werkt ook: **+ Compose** → zelfde inhoud plakken → **Deploy**.
+
+De map `/mnt/user/appdata/kart-analytics/data` bevat de database. Die blijft staan bij updates en herstarts; maak er gerust een back-up van.
 
 ## Wat analyseert het?
 
