@@ -1,0 +1,81 @@
+F1:
+  # Lettertype (wordt geladen via een CSS-resource met Titillium Web)
+  primary-font-family: "'Titillium Web', Roboto, 'Segoe UI', sans-serif"
+  paper-font-common-base_-_font-family: "'Titillium Web', Roboto, sans-serif"
+  mdc-typography-font-family: "'Titillium Web', Roboto, sans-serif"
+
+  # Kleuren
+  primary-color: "#E10600"
+  accent-color: "#E10600"
+  rgb-primary-color: "225, 6, 0"
+  rgb-accent-color: "225, 6, 0"
+  light-primary-color: "#ff5a52"
+  dark-primary-color: "#8a0400"
+  primary-text-color: "#F5F5F7"
+  secondary-text-color: "#9A9AA6"
+  text-primary-color: "#FFFFFF"
+  disabled-text-color: "#5c5c68"
+  divider-color: "#2a2a35"
+  error-color: "#ff5a52"
+  warning-color: "#FFD12E"
+  success-color: "#00D26A"
+  info-color: "#A64DFF"
+
+  # Achtergronden
+  primary-background-color: "#101016"
+  secondary-background-color: "#1A1A23"
+  lovelace-background: "radial-gradient(ellipse at top, rgba(225,6,0,.12), transparent 55%), repeating-linear-gradient(45deg, rgba(255,255,255,.02) 0 2px, transparent 2px 4px), #0f0f15"
+  card-background-color: "#1C1C26"
+  ha-card-background: "linear-gradient(160deg, #22222e, #16161d)"
+  ha-card-border-radius: "0px"
+  ha-card-border-width: "0px"
+  ha-card-box-shadow: "none"
+  ha-dialog-border-radius: "0px"
+  mdc-theme-surface: "#1C1C26"
+  code-editor-background-color: "#15151E"
+
+  # Bovenbalk en zijbalk
+  app-header-background-color: "#0B0B10"
+  app-header-text-color: "#FFFFFF"
+  app-header-border-bottom: "2px solid #E10600"
+  sidebar-background-color: "#0B0B10"
+  sidebar-text-color: "#C9C9D1"
+  sidebar-icon-color: "#9A9AA6"
+  sidebar-selected-text-color: "#FFFFFF"
+  sidebar-selected-icon-color: "#E10600"
+  sidebar-menu-button-text-color: "#FFFFFF"
+
+  # Iconen en schakelaars
+  state-icon-color: "#9A9AA6"
+  state-icon-active-color: "#E10600"
+  state-on-color: "#E10600"
+  state-active-color: "#E10600"
+  paper-item-icon-color: "#9A9AA6"
+  paper-item-icon-active-color: "#E10600"
+  switch-checked-color: "#E10600"
+  switch-checked-button-color: "#FFFFFF"
+  switch-checked-track-color: "#E10600"
+  switch-unchecked-button-color: "#9A9AA6"
+  switch-unchecked-track-color: "#38383F"
+  slider-color: "#E10600"
+  slider-bar-color: "#38383F"
+  input-fill-color: "#15151E"
+  input-ink-color: "#F5F5F7"
+  input-label-ink-color: "#9A9AA6"
+
+  # Grafieken
+  history-graph-color-1: "#E10600"
+  history-graph-color-2: "#A64DFF"
+  history-graph-color-3: "#00D26A"
+  history-graph-color-4: "#FFD12E"
+
+  # F1-kaartvorm via card-mod (rode streep boven, schuin afgesneden hoek)
+  card-mod-theme: F1
+  card-mod-card: |
+    ha-card {
+      border-top: 3px solid #E10600 !important;
+      clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+    }
+    .card-header, ha-card > h1 {
+      font-style: italic; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;
+    }
