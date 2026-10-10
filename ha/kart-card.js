@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "2.6.0";
+const KART_CARD_VERSION = "2.7.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -680,7 +680,7 @@ if (e.best > 0) cands.push({ ms: e.best, date: e.date, src: "live opgenomen" });
 }
 }
 const own = this._kaDriver(f.name);
-if (own && own.best > 0) cands.push({ ms: own.best, date: new Date(own.last).toISOString(), src: "eigen logger" });
+if (own && own.best > 0) cands.push({ ms: own.best, date: own.last ? new Date(own.last).toISOString() : "", src: "eigen logger" });
 const live = this._liveDrivers().find((d) => this._matches(f, d.N, ""));
 if (live && Number(live.B) > 0) cands.push({ ms: Number(live.B), date: new Date().toISOString(), src: "live gezien" });
 const key = this._knownKey(f);
@@ -792,7 +792,7 @@ this.shadowRoot.innerHTML = `
 <ha-card>
 <div class="f1">
 <div class="top">
-<div class="brand"><span class="redbar"></span><span class="title">${esc(this._config.title)}</span></div>
+<div class="brand"><span class="redbar"></span><div><span class="title">${esc(this._config.title)}</span><div class="subtitle">LIVE TIMING · ASSEN</div></div></div>
 ${liveOn ? `<span class="livepill" data-action="goto" data-tab="live"><span class="pulse"></span>LIVE</span>` : ""}
 </div>
 <nav class="tabs">
@@ -861,8 +861,21 @@ tile("Heats gereden", heats ? String(heats.length) : loading(), heats && heats.l
 this._kaKartTile(tile),
 this._kaTopTile(tile),
 ].join("");
+const meName = this._myLiveName() || "Jij";
+const meLive = this._liveDrivers().find((d) => sameName(d.N, this._myLiveName()));
+const myKart = meLive ? meLive.K : "";
+const top = this._kaTop(this._myLiveName());
+const prMs = [myBestMs, this._myBestMs()].filter((x) => x > 0).reduce((a, b) => Math.min(a, b), Infinity);
+const hero = `<div class="hero" style="--team:${myKart ? teamColor(myKart) : "var(--f1-red)"}">
+<div class="hero-num">${meEver ? esc(meEver.position) : "–"}</div>
+<div class="hero-id"><div class="hero-tla">${esc(tla(meName))}</div><div class="hero-name">${esc(meName)}</div>
+<div class="hero-tags">${meLive ? `<span class="htag live">LIVE · P${esc(meLive.P)} · KART ${esc(meLive.K)}</span>` : ""}${top ? `<span class="htag">TOP ${top.pct}%</span>` : ""}${meEver ? `<span class="htag">P${esc(meEver.position)} OOIT</span>` : ""}</div></div>
+<div class="hero-time"><div class="hero-label">PERSOONLIJK RECORD</div><div class="hero-lap">${isFinite(prMs) ? fmtLap(prMs) : "–"}</div>
+<div class="hero-sub">${recordMs && isFinite(prMs) ? `${fmtDelta(prMs - recordMs)} tot baanrecord` : "&nbsp;"}</div></div>
+</div>`;
 return `${errHtml}
 ${this._renderLiveStrip()}
+${hero}
 <div class="tiles">${tiles}</div>
 ${this._renderFollowPanel()}`;
 }
@@ -921,8 +934,8 @@ diffHtml = `<div class="tvalue ${cls}">${fmtDelta(d)}</div><div class="tsub">${t
 const bestHtml = best
 ? `<div class="tvalue">${fmtLap(best.ms)}</div><div class="tsub">${esc(best.src)} · ${fmtDate(best.date, false)}</div>`
 : `<div class="tvalue muted">–</div><div class="tsub">${pending ? "zoeken…" : "niet in een top 10 of gedeelde heat"}</div>`;
-return `<div class="fcard ${live ? "islive" : ""}">
-<div class="fh"><span class="fname">${esc(f.name)}</span>
+return `<div class="fcard ${live ? "islive" : ""}" style="--team:${live ? teamColor(live.K) : "var(--f1-follow)"}">
+<div class="fh"><span class="ftla">${esc(tla(f.name))}</span><span class="fname">${esc(f.name)}</span>
 ${live ? `<span class="fbadge">LIVE P${esc(live.P)}</span>` : ""}
 ${best && best.pos ? `<span class="fpos">P${esc(best.pos)} ooit</span>` : ""}
 ${(() => { const t = this._kaTop(f.name); return t ? `<span class="fpos" title="plek ${t.rank} van ${t.total} (eigen logger)">top ${t.pct}%</span>` : ""; })()}
@@ -1375,6 +1388,7 @@ text-transform:uppercase; letter-spacing:.5px; padding:5px 12px; cursor:pointer;
  background:conic-gradient(#fff 25%, #111 0 50%, #fff 0 75%, #111 0) 0 0/14px 14px;
  -webkit-mask:linear-gradient(90deg, transparent, #000 70%); mask:linear-gradient(90deg, transparent, #000 70%); }
 .brand, .livepill { position:relative; z-index:1; }
+.brand { overflow:visible; }
 .title { font-size:1.35em; letter-spacing:1px; text-shadow:0 2px 0 rgba(0,0,0,.6); }
 .redbar { width:10px; height:30px; }
 .livepill { margin-right:110px; box-shadow:0 0 18px rgba(225,6,0,.7); }
@@ -1420,6 +1434,43 @@ text-transform:uppercase; letter-spacing:.5px; padding:5px 12px; cursor:pointer;
 .btn { font-style:italic; text-transform:uppercase; letter-spacing:.5px; clip-path:polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%); padding-right:20px; }
 .heat { background:linear-gradient(90deg, #1e1e28, #15151c); clip-path:polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
 .pbadge { transform:skewX(-12deg); }
+/* ---------- F1 extra ---------- */
+.subtitle { font-size:.62em; font-weight:700; letter-spacing:3px; color:#ff5a52; margin-top:-2px; }
+.top { animation:none; }
+.top .brand::after { content:""; position:absolute; left:-40%; top:-20px; width:30%; height:90px; background:linear-gradient(90deg, transparent, rgba(255,255,255,.12), transparent);
+ transform:skewX(-20deg); animation:sweep 6s ease-in-out infinite; pointer-events:none; }
+@keyframes sweep { 0%,70% { left:-40%; } 100% { left:140%; } }
+.hero { position:relative; display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:16px; margin:0 0 12px; padding:14px 18px;
+ background:linear-gradient(105deg, var(--team) 0, var(--team) 7px, #0b0b10 7px, #0b0b10 30%, #1d1d28 30.3%, #14141b 100%);
+ clip-path:polygon(0 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%); overflow:hidden; }
+.hero::after { content:""; position:absolute; right:-30px; top:0; bottom:0; width:160px; background:repeating-linear-gradient(115deg, rgba(225,6,0,.22) 0 6px, transparent 6px 14px); pointer-events:none; }
+.hero-num { font-size:3.6em; font-weight:900; font-style:italic; line-height:.9; color:transparent; -webkit-text-stroke:2px #fff; min-width:1.4em; text-align:center; }
+.hero-tla { font-size:2.4em; font-weight:900; font-style:italic; letter-spacing:2px; line-height:1; }
+.hero-name { color:var(--f1-muted); font-weight:700; text-transform:uppercase; letter-spacing:1px; font-size:.85em; }
+.hero-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.htag { background:#fff; color:#000; font-weight:900; font-style:italic; font-size:.7em; padding:2px 8px; transform:skewX(-12deg); letter-spacing:1px; }
+.htag.live { background:var(--f1-red); color:#fff; }
+.hero-time { position:relative; z-index:1; text-align:right; }
+.hero-label { font-size:.68em; font-weight:900; letter-spacing:2px; color:#e6cfff; background:var(--f1-purple); display:inline-block; padding:2px 10px; transform:skewX(-12deg); }
+.hero-lap { font-size:2.5em; font-weight:900; font-style:italic; font-variant-numeric:tabular-nums; line-height:1.1; text-shadow:0 0 18px rgba(166,77,255,.5); }
+.hero-sub { color:var(--f1-muted); font-size:.8em; font-style:italic; }
+.fcard { border-left:none; background:linear-gradient(105deg, var(--team) 0, var(--team) 5px, #1d1d28 5px, #15151c 100%); }
+.ftla { font-weight:900; font-style:italic; font-size:1.5em; letter-spacing:1px; line-height:1; padding:2px 10px; background:var(--team); color:#000; transform:skewX(-12deg); }
+.fcard .fname { font-size:.85em; color:var(--f1-muted); }
+.section-h span::after { content:""; display:inline-block; width:22px; height:10px; margin-left:10px; vertical-align:0;
+ background:conic-gradient(#fff 25%, #111 0 50%, #fff 0 75%, #111 0) 0 0/5px 5px; }
+.trow:not(.head):hover { filter:brightness(1.15); }
+.section-h > .muted { background:none; transform:none; padding:0; font-style:italic; font-weight:600; text-transform:none; letter-spacing:0; }
+.section-h > .muted::after { display:none; }
+.trow.me { background:linear-gradient(90deg, rgba(225,6,0,.45), #1e1e28 55%); }
+.tower .trow.head { background:linear-gradient(90deg, var(--f1-red), #6d0300 40%, transparent 80%); color:#fff; padding:5px 8px 5px 0; clip-path:polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+.tiles .tile .tvalue { font-size:1.75em; }
+.body { background:linear-gradient(180deg, rgba(225,6,0,.05), transparent 160px); }
+@media (max-width: 520px) {
+.hero { grid-template-columns:auto 1fr; }
+.hero-time { grid-column:1 / -1; text-align:left; }
+.hero-num { font-size:2.6em; }
+}
 @media (max-width: 520px) {
 .full { display:none; }
 .top::after { width:70px; }
