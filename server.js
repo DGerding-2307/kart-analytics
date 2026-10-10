@@ -20,8 +20,14 @@ const CFG = {
   dbPath: process.env.DB_PATH || "/data/kart.db",
   publicDir: process.env.PUBLIC_DIR || path.join(__dirname, "public"),
   watchdogMs: Number(process.env.WATCHDOG_MS || 90000),
+  // Optioneel: persoonlijke app-sleutels voor profielfoto's. Alleen via omgevingsvariabelen, nooit in de code.
+  smsAccessToken: process.env.SMS_ACCESS_TOKEN || "",
+  smsDeviceToken: process.env.SMS_DEVICE_TOKEN || "",
+  smsVersion: process.env.SMS_VERSION || "6260618 202608281022",
+  smsApi: process.env.SMS_API || "https://mobile-api7.sms-timing.com/api",
+  smsClient: process.env.SMS_CLIENT || "kartenfunfabriek",
 };
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -484,7 +490,55 @@ function summary() {
     logger: { ...live, lastSnapshot: undefined },
     totals: { laps: c.n, heats: h.n, karts: c.karts, drivers: c.drivers, first: c.first, last: c.last },
     dbSizeBytes: fs.existsSync(CFG.dbPath) ? fs.statSync(CFG.dbPath).size : 0,
+    photos: Boolean(CFG.smsAccessToken && CFG.smsDeviceToken),
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Profielfoto's (via de app-API, met cache op schijf)                 */
+/* ------------------------------------------------------------------ */
+
+const photoDir = path.join(path.dirname(CFG.dbPath), "photos");
+const PHOTO_TTL = 7 * 86400000; // foto 7 dagen bewaren
+const MISS_TTL = 86400000; // "geen foto" 1 dag onthouden
+const photoBusy = new Map();
+
+async function photo(pid, size) {
+  if (!CFG.smsAccessToken || !CFG.smsDeviceToken) return null;
+  fs.mkdirSync(photoDir, { recursive: true });
+  const file = path.join(photoDir, `${pid}_${size}.jpg`);
+  const miss = file + ".none";
+  const fresh = (f, ttl) => fs.existsSync(f) && Date.now() - fs.statSync(f).mtimeMs < ttl;
+  if (fresh(file, PHOTO_TTL)) return fs.readFileSync(file);
+  if (fresh(miss, MISS_TTL)) return null;
+  if (photoBusy.has(file)) return photoBusy.get(file);
+  const job = (async () => {
+    try {
+      const url = `${CFG.smsApi}/person/picture/${CFG.smsClient}?personId=${pid}&width=${size}&height=${size}`;
+      const r = await fetch(url, {
+        headers: { "X-Fast-AccessToken": CFG.smsAccessToken, "X-Fast-DeviceToken": CFG.smsDeviceToken, "X-Fast-Version": CFG.smsVersion, Accept: "*/*" },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (r.status === 404) {
+        fs.writeFileSync(miss, "");
+        return null;
+      }
+      if (!r.ok) {
+        log("foto", pid, "status", r.status);
+        return fs.existsSync(file) ? fs.readFileSync(file) : null;
+      }
+      const buf = Buffer.from(await r.arrayBuffer());
+      fs.writeFileSync(file, buf);
+      return buf;
+    } catch (e) {
+      log("foto fout", pid, e.message);
+      return fs.existsSync(file) ? fs.readFileSync(file) : null;
+    } finally {
+      photoBusy.delete(file);
+    }
+  })();
+  photoBusy.set(file, job);
+  return job;
 }
 
 /* ------------------------------------------------------------------ */
@@ -514,7 +568,15 @@ function csv(opts) {
   return [head, ...rows.map((r) => [new Date(r.ts).toISOString(), esc(r.heat_name), esc(r.kart), esc(r.driver), r.lap_no, r.lap_ms, r.pos ?? "", r.flag].join(","))].join("\n");
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
+  const m = /^\/api\/photo\/(\d{5,25})$/.exec(req.url.split("?")[0]);
+  if (m) {
+    const size = Math.min(300, Math.max(40, Number(new URL(req.url, "http://x").searchParams.get("size")) || 100));
+    const buf = await photo(m[1], size).catch(() => null);
+    if (!buf) return send(res, 404, { error: "geen foto" });
+    res.writeHead(200, { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400", "Access-Control-Allow-Origin": "*" });
+    return res.end(buf);
+  }
   try {
     const url = new URL(req.url, "http://x");
     const P = url.searchParams;

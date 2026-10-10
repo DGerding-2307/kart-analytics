@@ -22,6 +22,10 @@ services:
       REPO_URL: https://github.com/DGerding-2307/kart-analytics.git
       AUTO_UPDATE: "true"
       UPDATE_INTERVAL_MIN: "60"
+      # Optioneel, voor profielfoto's: vul hier in Portainer je eigen app-sleutels in (staan ook in je HA secrets.yaml).
+      # Zet ze NOOIT in GitHub.
+      SMS_ACCESS_TOKEN: ""
+      SMS_DEVICE_TOKEN: ""
     volumes:
       - /mnt/user/appdata/kart-analytics/data:/data
       - /mnt/user/appdata/kart-analytics/app:/app

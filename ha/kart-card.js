@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "2.7.0";
+const KART_CARD_VERSION = "2.8.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -392,6 +392,26 @@ const d = this._ka.drivers && this._ka.drivers.data;
 if (!Array.isArray(d) || !name) return null;
 return d.find((x) => sameName(x.driver, name) || sameName(x.driver, liveName(name))) || null;
 }
+_pidFor(name) {
+if (!name) return "";
+if (sameName(name, this._myLiveName())) return String(this._config.person_id || "");
+const f = this._follows.find((x) => x.personId && (sameName(name, x.name) || sameName(name, liveName(x.name)) || sameName(liveName(name), liveName(x.name))));
+if (f) return String(f.personId);
+const m = (this._pidMap = this._pidMap || {});
+const key = liveName(name).toLowerCase();
+if (m[key]) return m[key];
+for (const c of Object.values(this._ranking)) for (const r of c.rows || []) if (r.personId) m[liveName(r.participant).toLowerCase()] = String(r.personId);
+const add = (det) => { for (const p of (det && det.participants) || []) if (p.personId) m[liveName(`${p.firstName || ""} ${p.name || ""}`).toLowerCase()] = String(p.personId); };
+for (const c of Object.values(this._heatCache)) add(c.details);
+if (this._archive) for (const e of Object.values(this._archive.heats)) add(e.details);
+return m[key] || "";
+}
+_av(pid, cls = "av", size = 100) {
+if (!pid) return "";
+const sum = this._ka.summary && this._ka.summary.data;
+if (sum && sum.photos === false) return "";
+return `<img class="${cls}" src="${esc(this._kaBase())}/api/photo/${esc(pid)}?size=${size}" alt="" loading="lazy" onerror="this.remove()">`;
+}
 _kaTop(name) {
 const d = this._ka.drivers && this._ka.drivers.data;
 if (!Array.isArray(d) || !name) return null;
@@ -625,6 +645,7 @@ if (this._tab === "overview") this._loadOverview();
 if (this._tab === "heats") this._ensureHeats();
 if (this._tab === "ranking") this._rankSrc === "own" ? this._loadOwnRanking() : this._ensureRanking(this._group, this._period);
 if (this._tab === "analytics") this._loadAnalytics();
+else this._kaGet("summary", "summary", 60000);
 }
 _matches(f, name, personId) {
 if (personId && f.personId && String(personId) === String(f.personId)) return true;
@@ -867,7 +888,7 @@ const myKart = meLive ? meLive.K : "";
 const top = this._kaTop(this._myLiveName());
 const prMs = [myBestMs, this._myBestMs()].filter((x) => x > 0).reduce((a, b) => Math.min(a, b), Infinity);
 const hero = `<div class="hero" style="--team:${myKart ? teamColor(myKart) : "var(--f1-red)"}">
-<div class="hero-num">${meEver ? esc(meEver.position) : "–"}</div>
+${this._av(String(this._config.person_id || ""), "hero-av", 200)}${meEver ? `<div class="hero-num">${esc(meEver.position)}</div>` : ""}
 <div class="hero-id"><div class="hero-tla">${esc(tla(meName))}</div><div class="hero-name">${esc(meName)}</div>
 <div class="hero-tags">${meLive ? `<span class="htag live">LIVE · P${esc(meLive.P)} · KART ${esc(meLive.K)}</span>` : ""}${top ? `<span class="htag">TOP ${top.pct}%</span>` : ""}${meEver ? `<span class="htag">P${esc(meEver.position)} OOIT</span>` : ""}</div></div>
 <div class="hero-time"><div class="hero-label">PERSOONLIJK RECORD</div><div class="hero-lap">${isFinite(prMs) ? fmtLap(prMs) : "–"}</div>
@@ -935,7 +956,7 @@ const bestHtml = best
 ? `<div class="tvalue">${fmtLap(best.ms)}</div><div class="tsub">${esc(best.src)} · ${fmtDate(best.date, false)}</div>`
 : `<div class="tvalue muted">–</div><div class="tsub">${pending ? "zoeken…" : "niet in een top 10 of gedeelde heat"}</div>`;
 return `<div class="fcard ${live ? "islive" : ""}" style="--team:${live ? teamColor(live.K) : "var(--f1-follow)"}">
-<div class="fh"><span class="ftla">${esc(tla(f.name))}</span><span class="fname">${esc(f.name)}</span>
+<div class="fh">${this._av(f.personId || this._pidFor(f.name), "fav")}<span class="ftla">${esc(tla(f.name))}</span><span class="fname">${esc(f.name)}</span>
 ${live ? `<span class="fbadge">LIVE P${esc(live.P)}</span>` : ""}
 ${best && best.pos ? `<span class="fpos">P${esc(best.pos)} ooit</span>` : ""}
 ${(() => { const t = this._kaTop(f.name); return t ? `<span class="fpos" title="plek ${t.rank} van ${t.total} (eigen logger)">top ${t.pct}%</span>` : ""; })()}
@@ -979,7 +1000,7 @@ let lastCls = "";
 if (last > 0) lastCls = last === fastest ? "purple" : last === best ? "green" : "yellow";
 return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}" style="--team:${teamColor(d.K)}">
 <div class="tpos">${esc(d.P)}</div>${this._posArrow(d)}
-<div class="tname"><span class="stripe"></span><b class="tla">${esc(tla(d.N))}</b><span class="full">${esc(d.N)}</span>${me ? `<span class="tag">JIJ</span>` : ""}</div>
+<div class="tname"><span class="stripe"></span>${this._av(this._pidFor(d.N))}<b class="tla">${esc(tla(d.N))}</b><span class="full">${esc(d.N)}</span>${me ? `<span class="tag">JIJ</span>` : ""}</div>
 <div class="tk"><span class="carno">${esc(d.K)}</span></div>
 <div class="tl">${esc(d.L)}</div>
 <div class="tt ${lastCls}">${fmtLap(d.T)}</div>
@@ -1045,7 +1066,7 @@ const name = `${p.firstName || ""} ${p.name || ""}`.trim();
 const fol = this._isFollowed(name, p.personId);
 return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
 <div class="tpos">${esc(p.position)}</div>
-<div class="tname">${esc(name)}${me ? `<span class="tag">JIJ</span>` : ""}</div>
+<div class="tname">${this._av(p.personId)}${esc(name)}${me ? `<span class="tag">JIJ</span>` : ""}</div>
 <div class="tt ${Number(p.scoreDefault) === fastest ? "purple" : ""}">${Number(p.scoreDefault) > 0 ? esc(p.score) : "–"}</div>
 <div class="tg">${Number(p.scoreDefault) > 0 && fastest ? (Number(p.scoreDefault) === fastest ? "" : fmtDelta(Number(p.scoreDefault) - fastest)) : ""}</div>
 <div class="tf">${me ? "" : this._followBtn(name, p.personId)}</div>
@@ -1148,7 +1169,7 @@ const ms = scoreToMs(r.score);
 const pc = r.position <= 3 ? ` p${r.position}` : "";
 return `${gap}<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
 <div class="tpos${pc}">${esc(r.position)}</div>
-<div class="tname">${esc(r.participant)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">${fmtDate(r.date, false)} · kart ${esc(r.kart ?? "")}</div></div>
+<div class="tname">${this._av(r.personId)}${esc(r.participant)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">${fmtDate(r.date, false)} · kart ${esc(r.kart ?? "")}</div></div>
 <div class="tt ${r.position === 1 ? "purple" : ""}">${esc(r.score)}</div>
 <div class="tg">${r.position === 1 || !leaderMs ? "" : fmtDelta(ms - leaderMs)}</div>
 <div class="tf">${me ? "" : this._followBtn(r.participant, r.personId)}</div>
@@ -1188,7 +1209,7 @@ const fol = !me && this._isFollowed(r.driver, "");
 const pc = i < 3 ? ` p${i + 1}` : "";
 return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
 <div class="tpos${pc}">${i + 1}</div>
-<div class="tname">${esc(r.driver)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">top ${Math.max(1, Math.ceil(((i + 1) / rows.length) * 100))}% · ${r.heats} heat${r.heats === 1 ? "" : "s"} · ${r.laps} rondes · ${fmtAgo(r.last)}</div></div>
+<div class="tname">${this._av(this._pidFor(r.driver))}${esc(r.driver)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">top ${Math.max(1, Math.ceil(((i + 1) / rows.length) * 100))}% · ${r.heats} heat${r.heats === 1 ? "" : "s"} · ${r.laps} rondes · ${fmtAgo(r.last)}</div></div>
 <div class="tt ${i === 0 ? "purple" : ""}">${fmtLap(r.best)}</div>
 <div class="tg">${i === 0 ? "" : fmtDelta(r.best - lead)}</div>
 <div class="tf">${me ? "" : this._followBtn(r.driver, "")}</div>
@@ -1434,6 +1455,13 @@ text-transform:uppercase; letter-spacing:.5px; padding:5px 12px; cursor:pointer;
 .btn { font-style:italic; text-transform:uppercase; letter-spacing:.5px; clip-path:polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%); padding-right:20px; }
 .heat { background:linear-gradient(90deg, #1e1e28, #15151c); clip-path:polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
 .pbadge { transform:skewX(-12deg); }
+/* ---------- profielfoto's ---------- */
+.av { width:26px; height:26px; object-fit:cover; border-radius:50%; vertical-align:middle; margin-right:8px; border:2px solid var(--team, #fff); background:#222; flex:none; }
+.tname .av { margin-top:-3px; }
+.fav { width:44px; height:44px; object-fit:cover; clip-path:polygon(12% 0, 100% 0, 88% 100%, 0 100%); background:#222; }
+.hero-av { width:92px; height:92px; object-fit:cover; clip-path:polygon(14% 0, 100% 0, 86% 100%, 0 100%); background:#222; border-bottom:4px solid var(--team); }
+.hero:has(.hero-av) { grid-template-columns:auto auto 1fr auto; }
+@media (max-width: 520px) { .hero-av { width:64px; height:64px; } .hero:has(.hero-av) { grid-template-columns:auto auto 1fr; } }
 /* ---------- F1 extra ---------- */
 .subtitle { font-size:.62em; font-weight:700; letter-spacing:3px; color:#ff5a52; margin-top:-2px; }
 .top { animation:none; }
