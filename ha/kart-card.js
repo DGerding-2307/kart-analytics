@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.4.1";
+const KART_CARD_VERSION = "3.5.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -459,6 +459,9 @@ return location.protocol === "https:" && this._kaBase().startsWith("http:");
 }
 _av(pid, cls = "av", size = 100) {
 if (!pid) return "";
+// eigen foto's (bv. een driver-foto in /config/www) gaan voor
+const own = this._config.photos && this._config.photos[String(pid)];
+if (own) return `<img class="${cls}" src="${esc(own)}" alt="">`;
 const sum = this._ka.summary && this._ka.summary.data;
 if (sum && sum.photos === false) return "";
 if (this._kaViaHA()) {
