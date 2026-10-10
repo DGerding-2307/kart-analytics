@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.1.1";
+const KART_CARD_VERSION = "3.1.2";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -469,9 +469,9 @@ if (e && e.data) return `<img class="${cls}" src="${e.data}" alt="">`;
 if (!e || (e.none && Date.now() - (e.at || 0) > 120000)) {
 P[k] = { loading: true };
 (this._photoQ = this._photoQ || []).push(() =>
-this._kaFetch(`photo64/${pid}?size=${size}`)
-.then((r) => (P[k] = { data: r && r.data, none: !(r && r.data), at: Date.now() }))
-.catch(() => (P[k] = { none: true, at: Date.now() }))
+Promise.race([this._kaFetch(`photo64/${pid}?size=${size}`), new Promise((_, rej) => setTimeout(() => rej(new Error("time-out na 25 s")), 25000))])
+.then((r) => (P[k] = { data: r && r.data, none: !(r && r.data), at: Date.now(), err: r && r.data ? "" : "server gaf geen foto" }))
+.catch((e) => (P[k] = { none: true, at: Date.now(), err: (e && e.message) || String(e) }))
 .finally(() => this._render())
 );
 this._pumpPhotos();
@@ -1320,7 +1320,14 @@ const s = S.data, lg = s.logger || {}, t = s.totals || {};
 const on = lg.state === "open" && lg.lastMessage && Date.now() - lg.lastMessage < 120000;
 const status = `<div class="strip"><span class="dot ${on ? "ok" : lg.state === "open" ? "wait" : "bad"}"></span>
 ${on ? "Logger live" : lg.state === "open" ? "Logger verbonden · geen heat bezig" : `Logger: ${esc(lg.state)}`}
-<span class="who">${(t.laps || 0).toLocaleString("nl-NL")} rondes · ${t.heats || 0} heats · ${t.karts || 0} karts${t.first ? ` · sinds ${fmtDate(new Date(t.first).toISOString(), false)}` : ""}</span></div>`;
+<span class="who">${(t.laps || 0).toLocaleString("nl-NL")} rondes · ${t.heats || 0} heats · ${t.karts || 0} karts${t.first ? ` · sinds ${fmtDate(new Date(t.first).toISOString(), false)}` : ""}</span></div>
+${(() => {
+const P = Object.values(this._photos || {});
+const ok = P.filter((x) => x.data).length, bad = P.filter((x) => x.none), busy = P.filter((x) => x.loading).length;
+const route = this._kaViaHA() ? "via Home Assistant (https)" : "direct van de server";
+const err = bad.map((x) => x.err).filter(Boolean)[0];
+return `<div class="muted small" style="margin:-4px 0 10px">Kaart ${KART_CARD_VERSION} · server ${esc(s.version || "?")} · foto's ${s.photos ? "aan" : "uit (sleutels ontbreken)"} · ${route}${this._kaViaHA() ? ` · ${ok} geladen, ${busy} bezig, ${bad.length} mislukt${err ? ` (${esc(err)})` : ""}` : ""}</div>`;
+})()}`;
 const karts = K && K.data && Array.isArray(K.data.karts) ? K.data.karts : [];
 const idx = (x) => x.driverCorrectedMs ?? x.heatIndexMs;
 const ranked = karts.filter((x) => idx(x) != null);
