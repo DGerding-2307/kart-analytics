@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "2.3.1";
+const KART_CARD_VERSION = "2.4.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -17,58 +17,6 @@ const PERIODS = [
 { id: "year", name: "Dit jaar" },
 { id: "ever", name: "Ooit" },
 ];
-const TRACK = {"w":761,"h":1106,"c":[624,990,654,969,676,938,687,903,685,868,670,834,643,806,610,788,574,783,539,790,505,804,472,822,439,840,405,856,370,866,334,870,296,867,259,858,225,844,195,824,169,797,152,764,147,728,153,691,166,655,183,623,204,592,226,562,245,531,256,496,259,458,260,421,261,384,264,347,272,310,287,276,313,252,350,244,383,259,393,292,385,329,372,365,359,399,346,434,334,469,324,505,316,541,313,578,313,615,322,652,344,678,379,686,418,688,455,690,491,691,528,691,566,687,602,677,634,658,659,632,676,599,686,563,690,526,691,489,688,452,682,415,673,379,658,346,626,329,603,354,597,392,590,428,574,461,554,493,532,523,506,550,475,570,440,569,414,542,412,506,427,472,449,442,471,412,489,379,501,344,506,307,504,270,499,233,491,198,479,163,462,128,439,99,410,79,374,70,336,70,299,78,265,93,238,117,219,149,210,185,208,222,210,260,209,296,208,333,204,371,193,407,168,412,151,378,148,341,149,304,150,267,147,230,141,192,122,162,94,170,77,205,73,242,74,279,76,316,78,353,80,390,81,428,82,465,83,502,82,539,81,576,80,613,79,651,77,688,75,725,73,762,72,799,70,836,71,873,76,910,88,946,110,973,143,989,181,995,218,998,254,998,291,998,329,999,366,1000,403,1000,440,1001,477,1002,514,1003,552,1003,589,1001],"l":[618,979,646,961,670,935,682,903,681,869,665,837,637,813,606,799,575,796,542,798,505,806,470,819,437,836,403,851,370,864,334,871,295,872,257,866,222,851,192,828,169,797,156,763,152,728,154,691,164,655,180,621,198,588,217,556,232,524,244,494,253,458,260,421,264,384,268,348,275,311,290,279,316,257,349,254,372,268,387,292,390,331,380,368,364,401,347,434,331,468,319,503,313,540,315,578,323,614,338,646,352,663,379,684,418,699,454,704,491,702,529,695,565,681,596,663,621,642,642,620,662,594,679,562,692,526,697,489,695,451,687,414,672,379,652,351,628,340,604,355,584,391,578,424,571,460,557,495,536,526,506,550,472,562,447,555,428,536,419,508,426,471,443,438,463,407,480,376,494,343,502,307,504,270,501,233,492,197,476,164,454,133,430,109,404,92,373,80,337,78,302,87,272,104,249,126,230,153,216,185,209,222,206,260,206,296,209,333,207,371,194,408,169,411,152,378,147,341,148,304,151,267,151,230,142,192,119,168,97,173,74,205,69,242,72,279,76,316,78,353,79,390,81,428,82,465,82,502,82,539,81,576,81,613,81,651,78,688,73,725,68,762,64,799,65,836,72,873,88,908,108,936,125,954,148,971,181,988,218,1001,254,1006,291,1005,329,1002,366,1000,403,1001,440,1004,477,1005,514,1004,552,1001,588,993],"wl":[34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,33,33,33,33,34,34,34,34,34,34,34,34,34,34,34,34,34,33,33,33,33,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,33,31,29,28,29,31,32,34,34,33,31,29,28,29,31,33,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34],"wr":[34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,32,30,28,28,30,32,33,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,33,32,30,28,28,30,32,33,33,33,34,34,34,34,34,34,34,34,33,33,33,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34,34],"s":"222111110000012222212101000000022222220100000122220010001101121222221000002220100000000122222211101100222200000222000000000000000222222210011000002222","p":[4,21,38,50,68,77,93,106,113,136],"k":[-1,1,1,-1,-1,1,-1,1,-1,-1],"v":[32,41,22,34,15,20,37,13,16,42],"pit":{"pts":[[175,1030],[215,1056],[255,1086],[540,1086],[585,1056],[620,1030]],"y":1086,"x1":255,"x2":540,"hw":13}};
-let _trackSvg = null;
-function trackSvg() {
-if (_trackSvg) return _trackSvg;
-const T = TRACK, n = T.c.length / 2;
-const P = [], Lp = [];
-for (let i = 0; i < n; i++) { P.push([T.c[2*i], T.c[2*i+1]]); Lp.push([T.l[2*i], T.l[2*i+1]]); }
-const N = P.map((_, i) => { const a = P[(i + n - 1) % n], b = P[(i + 1) % n]; const dx = b[0]-a[0], dy = b[1]-a[1], d = Math.hypot(dx, dy) || 1; return [-dy/d, dx/d]; });
-const pt = (p) => `${Math.round(p[0])},${Math.round(p[1])}`;
-const path = (arr, closed) => "M" + arr.map(pt).join(" L") + (closed ? " Z" : "");
-const off = (i, k) => [P[i][0] + N[i][0]*k, P[i][1] + N[i][1]*k];
-const left = P.map((_, i) => off(i, T.wl[i])), right = P.map((_, i) => off(i, -T.wr[i]));
-const surface = path(left, true) + " " + path(right, true);
-const cols = { 0: "#00D26A", 1: "#FFD12E", 2: "#E10600" };
-let segs = "", start = 0;
-for (let i = 1; i <= n; i++) { if (i === n || T.s[i] !== T.s[start]) { const arr = []; for (let j = start; j <= i; j++) arr.push(Lp[j % n]); segs += `<path d="${path(arr)}" stroke="${cols[T.s[start]]}"/>`; start = i; } }
-const a = left[0], b = right[0], t0 = [P[1][0]-P[0][0], P[1][1]-P[0][1]], tl = Math.hypot(t0[0], t0[1]) || 1, t = [t0[0]/tl*8, t0[1]/tl*8];
-let cheq = "";
-for (let r = 0; r < 2; r++) for (let c = 0; c < 8; c++) {
-const s = [a[0] + (b[0]-a[0])*c/8 + t[0]*(r-1), a[1] + (b[1]-a[1])*c/8 + t[1]*(r-1)], u = [(b[0]-a[0])/8, (b[1]-a[1])/8];
-cheq += `<path d="${path([s, [s[0]+u[0], s[1]+u[1]], [s[0]+u[0]+t[0], s[1]+u[1]+t[1]], [s[0]+t[0], s[1]+t[1]]], true)}" fill="${(r + c) % 2 ? "#111" : "#fff"}"/>`; }
-const ai = 4, ap = P[ai], at0 = [P[ai+1][0]-P[ai-1][0], P[ai+1][1]-P[ai-1][1]], al = Math.hypot(at0[0], at0[1]), at = [at0[0]/al, at0[1]/al], an = [-at[1], at[0]];
-const tri = [[ap[0]+at[0]*16, ap[1]+at[1]*16], [ap[0]-at[0]*9+an[0]*10, ap[1]-at[1]*9+an[1]*10], [ap[0]-at[0]*9-an[0]*10, ap[1]-at[1]*9-an[1]*10]];
-let labels = "";
-T.p.forEach((p, j) => { const q = Lp[p];
-labels += `<g class="ap"><circle cx="${q[0]}" cy="${q[1]}" r="5"/><text x="${q[0] + 9}" y="${q[1] - 8}">${T.v[j]}</text></g>`; });
-let pit = "";
-if (T.pit) {
-const Q = T.pit, d = path(Q.pts);
-pit = `<g fill="none" stroke-linejoin="round" stroke-linecap="round"><path d="${d}" stroke="#fff" stroke-width="${2*Q.hw+4}"/><path d="${d}" stroke="#2E2E37" stroke-width="${2*Q.hw}"/>
-</g>`;
-for (let x = Q.x1 + 25, k = 1; x < Q.x2 - 20; x += 46, k++) pit += `<rect x="${x}" y="${Q.y + Q.hw + 4}" width="34" height="16" fill="#1F1F2A" stroke="#9A9AA6" stroke-width="1.5"/>`;
-pit += `<text class="pitt" x="${(Q.x1 + Q.x2) / 2}" y="${Q.y + 5}">PIT LANE · 20 km/h</text>`;
-pit += `<line x1="${Q.pts[1][0]}" y1="${Q.pts[1][1]-14}" x2="${Q.pts[1][0]}" y2="${Q.pts[1][1]+14}" stroke="#E10600" stroke-width="3"/><line x1="${Q.pts[4][0]}" y1="${Q.pts[4][1]-14}" x2="${Q.pts[4][0]}" y2="${Q.pts[4][1]+14}" stroke="#00D26A" stroke-width="3"/>`;
-}
-const VH = T.h + 92;
-_trackSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${T.w} ${VH}" class="trackmap" role="img" aria-label="Baankaart met ideale lijn">
-<rect width="${T.w}" height="${VH}" fill="#15151E"/>
-${pit}
-<path d="${surface}" fill="#3A3A44" fill-rule="evenodd"/>
-<g fill="none" stroke-linejoin="round" stroke-linecap="round">
-<path d="${path(left, true)}" stroke="#E10600" stroke-width="5"/><path d="${path(left, true)}" stroke="#fff" stroke-width="5" stroke-dasharray="9 9" stroke-linecap="butt"/>
-<path d="${path(right, true)}" stroke="#E10600" stroke-width="5"/><path d="${path(right, true)}" stroke="#fff" stroke-width="5" stroke-dasharray="9 9" stroke-linecap="butt"/>
-<g stroke-width="5">${segs}</g></g>${cheq}<path d="${path(tri, true)}" fill="#fff"/>
-<style>.trackmap .ap circle{fill:#fff;stroke:#15151E;stroke-width:2}.trackmap .ap text{fill:#fff;font:700 15px 'Titillium Web',Arial,sans-serif;paint-order:stroke;stroke:#15151E;stroke-width:4px}.trackmap .lg{font:600 15px 'Titillium Web',Arial,sans-serif;fill:#c9c9d1}.trackmap .pitt{fill:#FFD12E;font:900 italic 14px 'Titillium Web',Arial,sans-serif;text-anchor:middle;letter-spacing:1px}</style>
-${labels}
-<g transform="translate(24,${T.h + 40})" class="lg"><rect width="26" height="6" y="-6" fill="#00D26A"/><text x="34">Vol gas</text><rect x="130" width="26" height="6" y="-6" fill="#FFD12E"/><text x="164">Bocht / gas los</text><rect x="310" width="26" height="6" y="-6" fill="#E10600"/><text x="344">Remmen</text>
-<text y="28">● apex + km/h · ▲ rijrichting · ▦ start/finish · pitstraat onder</text></g>
-</svg>`;
-return _trackSvg;
-}
-
 function esc(s) {
 return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -304,7 +252,7 @@ analytics_url: "",
 },
 config || {}
 );
-if (!this._tab) this._tab = this._config.default_tab;
+if (!this._tab) this._tab = this._config.default_tab === "track" ? "overview" : this._config.default_tab;
 if (!this._group) this._group = String(this._config.score_group);
 if (this._follows === undefined) {
 const stored = storeGet(FOLLOW_STORE);
@@ -778,15 +726,13 @@ const tabs = [
 { id: "heats", name: "Heats" },
 { id: "ranking", name: "Klassement" },
 { id: "analytics", name: "Analyse" },
-{ id: "track", name: "Baan" },
 ];
 let body = "";
 if (this._tab === "overview") body = this._renderOverview();
 else if (this._tab === "live") body = this._renderLive();
 else if (this._tab === "heats") body = this._renderHeats();
 else if (this._tab === "ranking") body = this._renderRanking();
-else if (this._tab === "analytics") body = this._renderAnalytics();
-else body = this._renderTrack();
+else body = this._renderAnalytics();
 const liveOn = this._wsState === "open" && this._liveDrivers().length > 0;
 this.shadowRoot.innerHTML = `
 <style>${KART_CSS}</style>
@@ -864,9 +810,7 @@ this._kaKartTile(tile),
 return `${errHtml}
 ${this._renderLiveStrip()}
 <div class="tiles">${tiles}</div>
-${this._renderFollowPanel()}
-<div class="section-h"><span>Baan</span><button class="link" data-action="goto" data-tab="track">Uitleg ideale lijn ›</button></div>
-<div class="mapwrap small" data-action="goto" data-tab="track">${trackSvg()}</div>`;
+${this._renderFollowPanel()}`;
 }
 _renderLiveStrip() {
 const drivers = this._liveDrivers();
@@ -1236,16 +1180,6 @@ ${ranked.length > 8 ? `<div class="section-h"><span>Alle karts</span></div>${all
 <div class="section-h"><span>Meer</span></div>
 <a class="btn" style="display:inline-block;text-decoration:none" href="${esc(base)}" target="_blank" rel="noopener">Open volledig analysescherm ↗</a>
 <div class="muted small" style="margin-top:6px">Grafieken per kart, per coureur, per heat, opwarmcurve en tijdstip van de dag.${this._kaMode === "rest" ? " (gegevens via Home Assistant)" : ""}</div>`;
-}
-_renderTrack() {
-return `<div class="mapwrap">${trackSvg()}</div>
-<div class="tips">
-<div class="section-h"><span>Zo lees je de kaart</span></div>
-<p><b class="g">Groen</b> = vol gas, <b class="y">geel</b> = bocht / gas los, <b class="r">rood</b> = remzone vóór de bocht.
-De gekleurde lijn is de <b>ideale lijn</b>: buitenkant in, binnenkant raken (apex), buitenkant uit.</p>
-<p>De lijn is berekend uit de baanplattegrond als de snelste lijn binnen de baanbreedte (laat aanremmen, late apex, vroeg op het gas). De getallen bij de punten zijn de geschatte snelheid in km/h bij de apex.
-Snelheden bij de apex zijn een schatting. Het is een richtlijn: echte grip, kartgewicht en inhaalmomenten kunnen een andere lijn vragen.</p>
-</div>`;
 }
 }
 const KART_CSS = `
