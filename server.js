@@ -21,7 +21,7 @@ const CFG = {
   publicDir: process.env.PUBLIC_DIR || path.join(__dirname, "public"),
   watchdogMs: Number(process.env.WATCHDOG_MS || 90000),
 };
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -267,18 +267,18 @@ function cacheBust() {
  *  - slow:   ronde ver boven het eigen niveau in die heat (spin, botsing)
  *  - clean:  geen van bovenstaande
  */
-function loadLaps({ since = 0, grp = "Volwassenen" } = {}) {
-  const key = `${since}|${grp}`;
+function loadLaps({ since = 0, until = 0, grp = "Volwassenen" } = {}) {
+  const key = `${since}|${until}|${grp}`;
   if (cache.data && cache.key === key && Date.now() - cache.at < 60000) return cache.data;
   const rows = db
     .prepare(
       `SELECT l.id, l.heat_id, l.ts, l.participant, l.driver, l.kart, l.lap_no, l.lap_ms, l.pos,
               h.name AS heat_name, h.heat_no, h.grp, h.sched_ts
        FROM laps l JOIN heats h ON h.id = l.heat_id
-       WHERE l.ts >= ? AND (? = 'Alle' OR h.grp = ?)
+       WHERE l.ts >= ? AND l.ts < ? AND (? = 'Alle' OR h.grp = ?)
        ORDER BY l.ts`
     )
-    .all(since, grp, grp);
+    .all(since, until || 8.64e15, grp, grp);
 
   const byHeat = new Map();
   for (const r of rows) {
@@ -492,8 +492,9 @@ function summary() {
 /* ------------------------------------------------------------------ */
 
 function sinceFrom(params) {
+  if (params.get("since")) return Number(params.get("since")) || 0;
   const p = params.get("period") || "all";
-  const days = { "7d": 7, "30d": 30, "90d": 90, "365d": 365 }[p];
+  const days = { "1d": 1, "7d": 7, "30d": 30, "90d": 90, "365d": 365 }[p];
   return days ? Date.now() - days * 86400000 : 0;
 }
 
@@ -517,7 +518,7 @@ const server = http.createServer((req, res) => {
   try {
     const url = new URL(req.url, "http://x");
     const P = url.searchParams;
-    const opts = { since: sinceFrom(P), grp: P.get("group") || "Volwassenen" };
+    const opts = { since: sinceFrom(P), until: Number(P.get("until")) || 0, grp: P.get("group") || "Volwassenen" };
     const p = url.pathname;
     if (p === "/api/summary") return send(res, 200, summary());
     if (p === "/api/live") return send(res, 200, { state: live.state, at: live.lastMessage, snapshot: live.lastSnapshot });
