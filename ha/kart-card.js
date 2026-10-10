@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.1.3";
+const KART_CARD_VERSION = "3.2.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -470,7 +470,7 @@ if (e && e.data) return `<img class="${cls}" src="${e.data}" alt="">`;
 if (!e || (e.none && Date.now() - (e.at || 0) > 120000)) {
 P[k] = { loading: true };
 (this._photoQ = this._photoQ || []).push(() =>
-Promise.race([this._kaFetch(`photo64/${pid}?size=${size}`), new Promise((_, rej) => setTimeout(() => rej(new Error("time-out na 25 s")), 25000))])
+Promise.race([this._photo64(pid, size), new Promise((_, rej) => setTimeout(() => rej(new Error("time-out na 40 s")), 40000))])
 .then((r) => (P[k] = { data: r && r.data, none: !(r && r.data), at: Date.now(), err: r && r.data ? "" : "server gaf geen foto" }))
 .catch((e) => (P[k] = { none: true, at: Date.now(), err: (e && e.message) || String(e) }))
 .finally(() => this._render())
@@ -482,6 +482,25 @@ return "";
 const src = `${this._kaBase()}/api/photo/${pid}?size=${size}`;
 if (BAD_PHOTOS.has(src)) return "";
 return `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy" onerror="window.__kartBadPhotos&&window.__kartBadPhotos.add(this.getAttribute('src'));this.remove()">`;
+}
+async _photo64(pid, size) {
+// eerst in kleine stukken (werkt via Nabu Casa), anders in één keer
+try {
+const first = await this._kaFetch(`photo64/${pid}?size=${size}&chunk=0&len=20000`);
+if (first && first.parts >= 1 && first.data) {
+let data = first.data;
+for (let i = 1; i < first.parts; i++) {
+const r = await this._kaFetch(`photo64/${pid}?size=${size}&chunk=${i}&len=20000`);
+if (!r || r.data == null) throw new Error("stuk " + i + " ontbreekt");
+data += r.data;
+}
+return { data };
+}
+if (first && first.parts === 0) return { data: null };
+} catch (e) {
+this._photoErr = e.message;
+}
+return this._kaFetch(`photo64/${pid}?size=${size}`);
 }
 _pumpPhotos() {
 this._photoBusy = this._photoBusy || 0;

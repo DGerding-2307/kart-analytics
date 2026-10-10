@@ -27,7 +27,7 @@ const CFG = {
   smsApi: process.env.SMS_API || "https://mobile-api7.sms-timing.com/api",
   smsClient: process.env.SMS_CLIENT || "kartenfunfabriek",
 };
-const VERSION = "1.5.0";
+const VERSION = "1.5.1";
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -653,7 +653,16 @@ const server = http.createServer(async (req, res) => {
   if (m64) {
     const size = Math.min(300, Math.max(40, Number(new URL(req.url, "http://x").searchParams.get("size")) || 100));
     const buf = await photo(m64[1], size).catch(() => null);
-    return send(res, 200, { data: buf ? `data:image/jpeg;base64,${buf.toString("base64")}` : null });
+    const full = buf ? `data:${buf[0] === 0x89 ? "image/png" : "image/jpeg"};base64,${buf.toString("base64")}` : null;
+    // in stukken (voor Home Assistant via Nabu Casa, dat grote berichten niet goed doorgeeft)
+    const q = new URL(req.url, "http://x").searchParams;
+    if (q.has("chunk")) {
+      const len = Math.min(60000, Math.max(4000, Number(q.get("len")) || 20000));
+      const parts = full ? Math.ceil(full.length / len) : 0;
+      const i = Math.max(0, Number(q.get("chunk")) || 0);
+      return send(res, 200, { parts, part: i, data: full ? full.slice(i * len, (i + 1) * len) : null });
+    }
+    return send(res, 200, { data: full });
   }
   const m = /^\/api\/photo\/(\d{5,25})$/.exec(req.url.split("?")[0]);
   if (m) {
