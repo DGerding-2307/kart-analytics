@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kart Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#15151E;--panel:#1F1F2B;--panel2:#262634;--line:#33334a;--text:#F3F3F7;--muted:#9a9ab0;
+  --red:#E10600;--green:#00D26A;--purple:#A855F7;--yellow:#FFD12E;--blue:#3B82F6;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:'Titillium Web',system-ui,Arial,sans-serif}
+a{color:inherit}
+header{display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:3px solid var(--red);background:#101018;position:sticky;top:0;z-index:5;flex-wrap:wrap}
+.logo{font-weight:900;font-size:22px;letter-spacing:.5px;font-style:italic}
+.logo span{color:var(--red)}
+.status{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}
+.dot.on{background:var(--green);box-shadow:0 0 10px var(--green);animation:pulse 1.6s infinite}
+.dot.off{background:var(--red)}
+@keyframes pulse{50%{opacity:.4}}
+.filters{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+select,button,input{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:inherit;font-size:14px}
+button{cursor:pointer}
+button:hover{border-color:var(--red)}
+nav{display:flex;gap:2px;padding:0 20px;background:#101018;overflow-x:auto}
+nav button{border:0;border-radius:0;background:none;padding:12px 16px;font-weight:700;text-transform:uppercase;font-size:13px;letter-spacing:.8px;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap}
+nav button.act{color:var(--text);border-bottom-color:var(--red)}
+main{padding:20px;max-width:1400px;margin:0 auto}
+.grid{display:grid;gap:16px}
+.g4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(420px,1fr))}
+.card{background:var(--panel);border-radius:10px;padding:16px;border-left:4px solid var(--red);min-width:0}
+.card.plain{border-left-color:var(--line)}
+.card h2{margin:0 0 12px;font-size:15px;text-transform:uppercase;letter-spacing:1px;font-weight:700}
+.card h2 small{color:var(--muted);text-transform:none;letter-spacing:0;font-weight:400;margin-left:6px}
+.kpi .l{font-size:12px;text-transform:uppercase;color:var(--muted);letter-spacing:1px}
+.kpi .v{font-size:30px;font-weight:900;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:13px;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:8px 6px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;user-select:none}
+td{padding:7px 6px;border-bottom:1px solid #2a2a3a;white-space:nowrap}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--panel2)}
+.r{text-align:right}
+.tw{overflow-x:auto}
+.purple{color:var(--purple);font-weight:700}
+.green{color:var(--green)}
+.red{color:var(--red)}
+.yellowc{color:var(--yellow)}
+.muted{color:var(--muted)}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:700;background:var(--panel2)}
+.kno{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:26px;padding:0 6px;border-radius:5px;background:#fff;color:#111;font-weight:900}
+.chart{width:100%;height:auto;display:block}
+.chart text{fill:var(--muted);font-size:11px;font-family:inherit}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.back{margin-bottom:14px}
+.hint{font-size:13px;color:var(--muted);line-height:1.5}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+.advice{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.advice div{background:var(--panel2);border-radius:8px;padding:10px 12px}
+.advice b{font-size:22px}
+#tip{position:fixed;pointer-events:none;background:#000d;border:1px solid var(--line);padding:6px 9px;border-radius:6px;font-size:12px;display:none;z-index:9;white-space:pre}
+@media (max-width:640px){.g2{grid-template-columns:1fr}main{padding:12px}header{padding:10px 12px}.filters{margin-left:0}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">KART<span>/</span>ANALYTICS</div>
+  <div class="status"><span id="dot" class="dot"></span><span id="stxt">laden…</span></div>
+  <div class="filters">
+    <select id="period"><option value="7d">7 dagen</option><option value="30d">30 dagen</option><option value="90d">90 dagen</option><option value="365d">1 jaar</option><option value="all" selected>Alles</option></select>
+    <select id="group"><option>Volwassenen</option><option>Kids</option><option>Alle</option></select>
+    <button id="csv" title="Alle rondes downloaden als CSV">⬇ CSV</button>
+  </div>
+</header>
+<nav id="nav">
+  <button data-v="overview" class="act">Overzicht</button>
+  <button data-v="karts">Karts</button>
+  <button data-v="drivers">Coureurs</button>
+  <button data-v="heats">Heats</button>
+  <button data-v="conditions">Omstandigheden</button>
+  <button data-v="about">Uitleg</button>
+</nav>
+<main id="app"></main>
+<div id="tip"></div>
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const app = $("#app");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const js = (v) => esc(JSON.stringify(v));
+const fmt = (ms) => (ms == null || isNaN(ms) ? "–" : (ms / 1000).toFixed(3));
+const fmtD = (ms, d = 3) => (ms == null || isNaN(ms) ? "–" : (ms > 0 ? "+" : ms < 0 ? "−" : "±") + Math.abs(ms / 1000).toFixed(d));
+const fmtDate = (ts) => (ts ? new Date(ts).toLocaleString("nl-NL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "–");
+const fmtDay = (ts) => new Date(ts).toLocaleDateString("nl-NL", { day: "2-digit", month: "short" });
+const ago = (ts) => {
+  if (!ts) return "nooit";
+  const s = (Date.now() - ts) / 1000;
+  if (s < 90) return Math.round(s) + " s geleden";
+  if (s < 5400) return Math.round(s / 60) + " min geleden";
+  if (s < 172800) return Math.round(s / 3600) + " uur geleden";
+  return Math.round(s / 86400) + " dagen geleden";
+};
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("ka_" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
+  set(k, v) { try { localStorage.setItem("ka_" + k, JSON.stringify(v)); } catch (_) {} },
+};
+const state = { view: "overview", arg: null, period: store.get("period", "all"), group: store.get("group", "Volwassenen"), sort: {} };
+$("#period").value = state.period;
+$("#group").value = state.group;
+
+async function api(p, extra = "") {
+  const sep = p.includes("?") ? "&" : "?";
+  const r = await fetch(`api/${p}${sep}period=${state.period}&group=${encodeURIComponent(state.group)}${extra}`);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+/* ---------------- tooltip ---------------- */
+const tip = $("#tip");
+document.addEventListener("mousemove", (e) => {
+  const t = e.target.closest && e.target.closest("[data-tip]");
+  if (!t) { tip.style.display = "none"; return; }
+  tip.textContent = t.getAttribute("data-tip");
+  tip.style.display = "block";
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
+  tip.style.left = x + "px";
+  tip.style.top = e.clientY + 14 + "px";
+});
+
+/* ---------------- grafieken (eigen SVG, geen externe bibliotheek) ---------------- */
+function niceTicks(min, max, n = 5) {
+  if (min === max) { min -= 1; max += 1; }
+  const step0 = (max - min) / n, mag = 10 ** Math.floor(Math.log10(step0));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= step0);
+  const out = [];
+  for (let v = Math.ceil(min / step) * step; v <= max + 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+/**
+ * series: [{name,color,points:[{x,y,tip,r}], line:bool, dots:bool, width, dash}]
+ * opts: {h, xTime, yFmt, xFmt, yMin, yMax, band:[{y1,y2,color}]}
+ */
+function chart(series, opts = {}) {
+  const W = opts.w || 900, H = opts.h || 300, L = 56, R = 14, T = 12, B = 30;
+  const pts = series.flatMap((s) => s.points);
+  if (!pts.length) return `<div class="empty">Nog geen gegevens</div>`;
+  let x0 = Math.min(...pts.map((p) => p.x)), x1 = Math.max(...pts.map((p) => p.x));
+  let ys = pts.map((p) => p.y).sort((a, b) => a - b);
+  // robuuste schaal: uitschieters (crashes) niet de hele grafiek laten bepalen
+  let y0 = opts.yMin ?? ys[Math.floor(ys.length * 0.0)], y1 = opts.yMax ?? ys[Math.min(ys.length - 1, Math.floor(ys.length * 0.97))];
+  if (y1 - y0 < 1e-9) { y0 -= 1; y1 += 1; }
+  const pad = (y1 - y0) * 0.08; y0 -= pad; y1 += pad;
+  if (x1 === x0) { x0 -= 1; x1 += 1; }
+  const sx = (x) => L + ((x - x0) / (x1 - x0)) * (W - L - R);
+  const sy = (y) => T + (1 - (Math.min(Math.max(y, y0), y1) - y0) / (y1 - y0)) * (H - T - B);
+  const yF = opts.yFmt || ((v) => fmt(v));
+  let g = "";
+  for (const b of opts.band || []) g += `<rect x="${L}" width="${W - L - R}" y="${sy(b.y2)}" height="${Math.max(0, sy(b.y1) - sy(b.y2))}" fill="${b.color}"/>`;
+  for (const v of niceTicks(y0, y1)) g += `<line x1="${L}" x2="${W - R}" y1="${sy(v)}" y2="${sy(v)}" stroke="#2c2c3e"/><text x="${L - 6}" y="${sy(v) + 4}" text-anchor="end">${yF(v)}</text>`;
+  if (opts.xTime) {
+    const span = x1 - x0, n = 6;
+    for (let i = 0; i <= n; i++) {
+      const v = x0 + (span * i) / n;
+      const lbl = span > 3 * 86400000 ? fmtDay(v) : new Date(v).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+      g += `<text x="${sx(v)}" y="${H - 8}" text-anchor="middle">${lbl}</text>`;
+    }
+  } else {
+    for (const v of niceTicks(x0, x1, Math.min(10, Math.ceil(x1 - x0)))) g += `<text x="${sx(v)}" y="${H - 8}" text-anchor="middle">${opts.xFmt ? opts.xFmt(v) : v}</text>`;
+  }
+  for (const s of series) {
+    if (s.line !== false && s.points.length > 1) {
+      const d = s.points.map((p, i) => `${i ? "L" : "M"}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join("");
+      g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.width || 2}" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""} stroke-linejoin="round"/>`;
+    }
+    if (s.dots) for (const p of s.points) g += `<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="${p.r || s.r || 3}" fill="${p.color || s.color}" ${p.y > y1 ? 'opacity=".5"' : ""} data-tip="${esc(p.tip || "")}"/>`;
+  }
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+}
+/** horizontale balken; items: [{label, value, tip, color}] ; diverging rond 0 */
+function bars(items, opts = {}) {
+  if (!items.length) return `<div class="empty">Nog geen gegevens</div>`;
+  const W = opts.w || 560, rowH = opts.rowH || 22, L = opts.labelW || 56, R = 64, H = items.length * rowH + 10;
+  const vals = items.map((i) => i.value);
+  const min = Math.min(0, ...vals), max = Math.max(0, ...vals);
+  const span = max - min || 1;
+  const sx = (v) => L + ((v - min) / span) * (W - L - R);
+  let g = `<line x1="${sx(0)}" x2="${sx(0)}" y1="0" y2="${H}" stroke="#555"/>`;
+  items.forEach((it, i) => {
+    const y = 5 + i * rowH, a = sx(Math.min(0, it.value)), b = sx(Math.max(0, it.value));
+    g += `<g data-tip="${esc(it.tip || "")}" ${it.click ? `style="cursor:pointer" onclick="${it.click}"` : ""}><text x="${L - 8}" y="${y + rowH / 2 + 4}" text-anchor="end" style="fill:#fff;font-weight:700">${esc(it.label)}</text>
+      <rect x="${a}" y="${y + 3}" width="${Math.max(1, b - a)}" height="${rowH - 6}" rx="3" fill="${it.color || "var(--red)"}"/>
+      <text x="${W - R + 8}" y="${y + rowH / 2 + 4}">${opts.fmt ? opts.fmt(it.value) : it.value}</text></g>`;
+  });
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+}
+function histogram(values, opts = {}) {
+  if (values.length < 3) return `<div class="empty">Te weinig rondes</div>`;
+  const s = [...values].sort((a, b) => a - b);
+  const lo = s[0], hi = s[Math.floor(s.length * 0.97)];
+  const bw = opts.bin || 200, n = Math.max(1, Math.ceil((hi - lo) / bw) + 1);
+  const cnt = Array(n).fill(0);
+  for (const v of s) if (v <= hi) cnt[Math.floor((v - lo) / bw)]++;
+  const W = 560, H = 220, L = 10, B = 26, max = Math.max(...cnt);
+  const w = (W - L) / n;
+  let g = "";
+  cnt.forEach((c, i) => {
+    const h = (c / max) * (H - B - 8);
+    g += `<rect x="${L + i * w + 1}" y="${H - B - h}" width="${Math.max(1, w - 2)}" height="${h}" fill="var(--red)" data-tip="${fmt(lo + i * bw)} – ${fmt(lo + (i + 1) * bw)}: ${c} rondes"/>`;
+    if (i % Math.ceil(n / 8) === 0) g += `<text x="${L + i * w}" y="${H - 8}">${fmt(lo + i * bw).slice(0, -2)}</text>`;
+  });
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+}
+const median = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const FLAGC = { clean: "#00D26A", slow: "#FFD12E", yellow: "#FF8A00", out: "#666680" };
+const FLAGN = { clean: "schoon", slow: "langzaam (spin/botsing?)", yellow: "gele vlag / neutralisatie", out: "uitrijronde" };
+const flagLegend = () => `<div class="legend">${Object.keys(FLAGC).map((k) => `<span><i style="background:${FLAGC[k]}"></i>${FLAGN[k]}</span>`).join("")}</div>`;
+const PALETTE = ["#E10600", "#3B82F6", "#00D26A", "#FFD12E", "#A855F7", "#FF8A00", "#22D3EE", "#F472B6", "#94A3B8", "#84CC16", "#FB7185", "#FDE68A"];
+
+/* sorteerbare tabellen */
+function table(id, cols, rows, onclick) {
+  const st = state.sort[id];
+  if (st) {
+    const c = cols.find((c) => c.k === st.k);
+    rows = [...rows].sort((a, b) => {
+      const va = c.v ? c.v(a) : a[c.k], vb = c.v ? c.v(b) : b[c.k];
+      if (va == null) return 1; if (vb == null) return -1;
+      return (va > vb ? 1 : va < vb ? -1 : 0) * st.d;
+    });
+  }
+  const th = cols.map((c) => `<th class="${c.r ? "r" : ""}" onclick="sortBy('${id}','${c.k}')">${c.t}${st && st.k === c.k ? (st.d > 0 ? " ▲" : " ▼") : ""}</th>`).join("");
+  const tr = rows.map((r, i) => `<tr ${onclick ? `class="click" onclick="${onclick(r, i)}"` : ""}>${cols.map((c) => `<td class="${c.r ? "r" : ""}">${c.f ? c.f(r, i) : esc(r[c.k])}</td>`).join("")}</tr>`).join("");
+  return `<div class="tw"><table><thead><tr>${th}</tr></thead><tbody>${tr || `<tr><td colspan="${cols.length}" class="muted">Nog geen gegevens</td></tr>`}</tbody></table></div>`;
+}
+window.sortBy = (id, k) => {
+  const s = state.sort[id];
+  state.sort[id] = { k, d: s && s.k === k ? -s.d : 1 };
+  render();
+};
+window.go = (view, arg = null) => {
+  state.view = view; state.arg = arg;
+  document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("act", b.dataset.v === view));
+  const h = "#" + view + (arg != null ? "/" + encodeURIComponent(arg) : "");
+  if (location.hash !== h) history.pushState(null, "", h);
+  render();
+};
+const kno = (k) => `<span class="kno">${esc(k)}</span>`;
+const me = () => store.get("me", "");
+const follows = () => store.get("follow", []);
+window.setMe = (n) => { store.set("me", n); render(); };
+window.toggleFollow = (n) => { const f = follows(); store.set("follow", f.includes(n) ? f.filter((x) => x !== n) : [...f, n]); render(); };
+
+/* ---------------- status ---------------- */
+let summary = null;
+async function refreshStatus() {
+  try {
+    summary = await (await fetch("api/summary")).json();
+    const st = summary.logger.state;
+    const on = st === "open" && summary.logger.lastMessage && Date.now() - summary.logger.lastMessage < 120000;
+    $("#dot").className = "dot " + (on ? "on" : st === "open" ? "" : "off");
+    $("#stxt").textContent = on ? `logger live · ${summary.totals.laps.toLocaleString("nl-NL")} rondes` : st === "open" ? "verbonden · geen heat bezig" : `logger: ${st}`;
+  } catch (_) {
+    $("#dot").className = "dot off";
+    $("#stxt").textContent = "server niet bereikbaar";
+  }
+}
+
+/* ---------------- views ---------------- */
+async function vOverview() {
+  const [k, d, h, live] = await Promise.all([api("karts"), api("drivers"), api("heats"), fetch("api/live").then((r) => r.json())]);
+  const t = summary ? summary.totals : {};
+  const ranked = k.karts.filter((x) => x.driverCorrectedMs != null || x.heatIndexMs != null);
+  const idx = (x) => x.driverCorrectedMs ?? x.heatIndexMs;
+  const best = d.filter((x) => x.best)[0];
+  const myName = me();
+  const mine = myName ? d.find((x) => x.driver === myName) : null;
+  let liveHtml = `<div class="hint">Er rijdt nu geen heat. De logger staat 24/7 klaar en slaat automatisch elke ronde op.</div>`;
+  const L = live.snapshot;
+  if (L && Array.isArray(L.D) && L.D.length && live.at && Date.now() - live.at < 120000) {
+    const rows = [...L.D].sort((a, b) => (a.P || 99) - (b.P || 99));
+    const fast = Math.min(...rows.map((r) => Number(r.B) || 1e9));
+    liveHtml = `<div class="muted" style="margin-bottom:8px"><b style="color:#fff">${esc(L.N)}</b></div>` + table("live", [
+      { k: "P", t: "Pos", f: (r) => `<b>${esc(r.P)}</b>` },
+      { k: "N", t: "Coureur" },
+      { k: "K", t: "Kart", f: (r) => kno(r.K) },
+      { k: "L", t: "Ronde", r: 1 },
+      { k: "T", t: "Laatste", r: 1, f: (r) => fmt(r.T) },
+      { k: "B", t: "Beste", r: 1, f: (r) => `<span class="${Number(r.B) === fast ? "purple" : ""}">${fmt(r.B)}</span>` },
+    ], rows);
+  }
+  return `
+  <div class="grid g4">
+    <div class="card kpi"><div class="l">Rondes gelogd</div><div class="v">${(t.laps || 0).toLocaleString("nl-NL")}</div><div class="s">${t.heats || 0} heats · sinds ${t.first ? fmtDay(t.first) : "–"}</div></div>
+    <div class="card kpi"><div class="l">Snelste ronde (periode)</div><div class="v purple">${fmt(best && best.best)}</div><div class="s">${best ? esc(best.driver) : "–"}</div></div>
+    <div class="card kpi"><div class="l">Snelste kart</div><div class="v green">${ranked[0] ? "#" + esc(ranked[0].kart) : "–"}</div><div class="s">${ranked[0] ? fmtD(idx(ranked[0]), 2) + " s/ronde t.o.v. gemiddeld" : "nog te weinig data"}</div></div>
+    <div class="card kpi"><div class="l">Traagste kart</div><div class="v red">${ranked.length > 1 ? "#" + esc(ranked[ranked.length - 1].kart) : "–"}</div><div class="s">${ranked.length > 1 ? fmtD(idx(ranked[ranked.length - 1]), 2) + " s/ronde" : "–"}</div></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>Live <small>${live.at ? ago(live.at) : ""}</small></h2>${liveHtml}</div>
+    <div class="card"><h2>Welke kart kies ik? <small>kart-effect, gecorrigeerd voor coureur</small></h2>
+      ${bars(ranked.slice(0, 12).map((x) => ({ label: "#" + x.kart, value: idx(x), color: idx(x) < 0 ? "var(--green)" : "var(--red)", tip: `kart ${x.kart}\n${fmtD(idx(x), 3)} s per ronde\n${x.cleanLaps} schone rondes`, click: `go('kart',${js(x.kart)})` })), { fmt: (v) => fmtD(v, 2), rowH: 24 })}
+      <div class="hint">Negatief (groen) = sneller dan gemiddeld. Volledige lijst onder <a href="#karts" onclick="go('karts');return false">Karts</a>.</div></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>${myName ? esc(myName) : "Jij"} <small>${myName ? "" : "stel in bij Coureurs → ‘dit ben ik’"}</small></h2>
+      ${mine ? `<div class="advice"><div><div class="muted">Beste</div><b class="purple">${fmt(mine.best)}</b></div><div><div class="muted">Mediaan</div><b>${fmt(mine.median)}</b></div><div><div class="muted">Constantheid (σ)</div><b>${fmt(mine.std)}</b></div><div><div class="muted">Heats</div><b>${mine.heats}</b></div></div>
+      <div style="margin-top:10px"><button onclick="go('driver',${js(myName)})">Mijn analyse →</button></div>` : `<div class="hint">${myName ? "In deze periode nog geen rondes van jou gelogd." : "Kies jezelf in de coureurslijst om hier je eigen cijfers te zien."}</div>`}
+      ${follows().length ? `<h2 style="margin-top:16px">Gevolgd</h2>` + table("fol", [
+        { k: "driver", t: "Coureur" }, { k: "best", t: "Beste", r: 1, f: (r) => fmt(r.best) },
+        { k: "diff", t: "Verschil met jou", r: 1, f: (r) => (mine && r.best ? `<span class="${r.best < mine.best ? "red" : "green"}">${fmtD(r.best - mine.best)}</span>` : "–") },
+        { k: "last", t: "Laatst gezien", r: 1, f: (r) => ago(r.last) }],
+        follows().map((n) => d.find((x) => x.driver === n) || { driver: n }), (r) => `go('driver',${js(r.driver)})`) : ""}
+    </div>
+    <div class="card"><h2>Laatste heats</h2>${table("lh", [
+      { k: "ts", t: "Tijd", f: (r) => fmtDate(r.ts) }, { k: "name", t: "Heat" }, { k: "drivers", t: "Rijders", r: 1 },
+      { k: "best", t: "Snelste", r: 1, f: (r) => (r.best ? `${fmt(r.best.ms)} <span class="muted">${esc(r.best.driver)} · #${esc(r.best.kart)}</span>` : "–") }],
+      h.slice(0, 8), (r) => `go('heat',${r.id})`)}</div>
+  </div>`;
+}
+
+async function vKarts() {
+  const k = await api("karts");
+  const idx = (x) => x.driverCorrectedMs ?? x.heatIndexMs;
+  return `
+  <div class="card"><h2>Kart-ranglijst <small>klik op een kart voor alle details · mediaan alle karts: ${fmt(k.overallMedian)}</small></h2>
+  ${table("karts", [
+    { k: "rank", t: "#", v: (r) => idx(r), f: (r, i) => i + 1 },
+    { k: "kart", t: "Kart", v: (r) => Number(r.kart) || r.kart, f: (r) => kno(r.kart) },
+    { k: "idx", t: "Kart-effect", r: 1, v: idx, f: (r) => { const v = idx(r); return v == null ? "–" : `<span class="${v < 0 ? "green" : "red"}">${fmtD(v, 2)}</span>${r.driverCorrectedMs == null ? ' <span class="muted" data-tip="Nog niet genoeg data voor coureur-correctie; dit is t.o.v. de heat">*</span>' : ""}`; } },
+    { k: "best", t: "Snelste", r: 1, f: (r) => fmt(r.best) },
+    { k: "p10", t: "Top-10%", r: 1, f: (r) => fmt(r.p10) },
+    { k: "median", t: "Mediaan", r: 1, f: (r) => fmt(r.median) },
+    { k: "mean", t: "Gemiddeld", r: 1, f: (r) => fmt(r.mean) },
+    { k: "worst", t: "Langzaamste", r: 1, f: (r) => fmt(r.worst) },
+    { k: "std", t: "Spreiding σ", r: 1, f: (r) => fmt(r.std) },
+    { k: "cleanLaps", t: "Rondes", r: 1, f: (r) => `${r.cleanLaps}<span class="muted">/${r.laps}</span>` },
+    { k: "drivers", t: "Rijders", r: 1 },
+    { k: "lastUsed", t: "Laatst gebruikt", r: 1, f: (r) => ago(r.lastUsed) },
+  ], k.karts, (r) => `go('kart',${js(r.kart)})`)}
+  <div class="hint" style="margin-top:10px"><b>Kart-effect</b>: hoeveel seconden per ronde deze kart sneller (−) of langzamer (+) is dan gemiddeld, gecorrigeerd voor wie erin reed en voor de omstandigheden in die heat. Alleen schone rondes tellen mee (geen uitrijronde, gele vlag of spin). * = nog onvoldoende data voor coureur-correctie.</div></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>Snelste ronde per kart</h2>${bars([...k.karts].filter((x) => x.best).sort((a, b) => a.best - b.best).map((x) => ({ label: "#" + x.kart, value: x.best - k.karts.reduce((m, y) => Math.min(m, y.best || 1e9), 1e9), color: "var(--purple)", tip: `kart ${x.kart}: ${fmt(x.best)}`, click: `go('kart',${js(x.kart)})` })), { fmt: (v) => "+" + fmt(v) })}<div class="hint">Achterstand op de snelste kart.</div></div>
+    <div class="card"><h2>Mediaan per kart</h2>${bars([...k.karts].filter((x) => x.median).sort((a, b) => a.median - b.median).map((x) => ({ label: "#" + x.kart, value: x.median - k.overallMedian, color: x.median < k.overallMedian ? "var(--green)" : "var(--red)", tip: `kart ${x.kart}: ${fmt(x.median)}`, click: `go('kart',${js(x.kart)})` })), { fmt: (v) => fmtD(v, 2) })}<div class="hint">Ongecorrigeerd: hangt ook af van wie er toevallig in reed.</div></div>
+  </div>`;
+}
+
+async function vKart(kart) {
+  const [k, all] = await Promise.all([api("kart/" + encodeURIComponent(kart)), api("karts")]);
+  const st = all.karts.find((x) => x.kart === kart) || {};
+  const clean = k.laps.filter((l) => l.flag === "clean");
+  const showAll = store.get("kartAll", false);
+  const pts = (showAll ? k.laps : clean).map((l) => ({ x: l.ts, y: l.ms, color: FLAGC[l.flag], r: 2.5, tip: `${fmt(l.ms)} · ${l.driver}\n${fmtDate(l.ts)} · ${l.heat} · ronde ${l.lap}\n${FLAGN[l.flag]}` }));
+  const daily = k.daily.map((d) => ({ ...d, x: new Date(d.day + "T12:00").getTime() }));
+  // rollend gemiddelde (50 rondes)
+  const roll = [];
+  for (let i = 0; i < clean.length; i++) { const w = clean.slice(Math.max(0, i - 49), i + 1).map((l) => l.ms); if (i >= 9) roll.push({ x: clean[i].ts, y: median(w) }); }
+  const perDriver = new Map();
+  for (const l of clean) { if (!perDriver.has(l.driver)) perDriver.set(l.driver, []); perDriver.get(l.driver).push(l.ms); }
+  const drows = [...perDriver].map(([driver, a]) => ({ driver, laps: a.length, best: Math.min(...a), median: median(a) }));
+  const idx = st.driverCorrectedMs ?? st.heatIndexMs;
+  const top = [...clean].sort((a, b) => a.ms - b.ms).slice(0, 10);
+  return `
+  <button class="back" onclick="history.back()">← Terug</button>
+  <div class="grid g4">
+    <div class="card kpi"><div class="l">Kart</div><div class="v">${kno(kart)}</div><div class="s">${st.cleanLaps || 0} schone rondes · ${st.heats || 0} heats · ${st.drivers || 0} rijders</div></div>
+    <div class="card kpi"><div class="l">Kart-effect</div><div class="v ${idx < 0 ? "green" : "red"}">${fmtD(idx, 2)}</div><div class="s">s per ronde t.o.v. gemiddelde kart</div></div>
+    <div class="card kpi"><div class="l">Snelste / mediaan</div><div class="v purple">${fmt(st.best)}</div><div class="s">mediaan ${fmt(st.median)} · gem. ${fmt(st.mean)}</div></div>
+    <div class="card kpi"><div class="l">Langzaamste schone ronde</div><div class="v">${fmt(st.worst)}</div><div class="s">spreiding σ ${fmt(st.std)}</div></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h2>Alle rondes over tijd <small><label><input type="checkbox" ${showAll ? "checked" : ""} onchange="store.set('kartAll',this.checked);render()"> ook niet-schone rondes tonen</label></small></h2>
+    ${chart([{ name: "rondes", color: "#00D26A", points: pts, line: false, dots: true }, { name: "trend", color: "#fff", points: roll, width: 2.5 }], { xTime: true, h: 320 })}
+    <div class="legend"><span><i style="background:#fff"></i>trend (mediaan laatste 50 rondes)</span></div>${showAll ? flagLegend() : ""}</div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>Per dag <small>snelste · mediaan · langzaamste</small></h2>
+      ${chart([{ color: "#E10600", points: daily.map((d) => ({ x: d.x, y: d.worst, tip: `${d.day}: langzaamste ${fmt(d.worst)}` })), dots: true, dash: "4 4" }, { color: "#fff", points: daily.map((d) => ({ x: d.x, y: d.median, tip: `${d.day}: mediaan ${fmt(d.median)} (${d.laps} rondes)` })), dots: true }, { color: "#A855F7", points: daily.map((d) => ({ x: d.x, y: d.best, tip: `${d.day}: snelste ${fmt(d.best)}` })), dots: true }], { xTime: true, h: 240, w: 560 })}
+      <div class="legend"><span><i style="background:#A855F7"></i>snelste</span><span><i style="background:#fff"></i>mediaan</span><span><i style="background:#E10600"></i>langzaamste</span></div></div>
+    <div class="card"><h2>Verdeling rondetijden</h2>${histogram(clean.map((l) => l.ms))}<div class="hint">Een smalle piek = voorspelbare kart. Een lange staart naar rechts kan wijzen op een technisch probleem.</div></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>Rijders in deze kart</h2>${table("kd", [{ k: "driver", t: "Coureur" }, { k: "laps", t: "Rondes", r: 1 }, { k: "best", t: "Beste", r: 1, f: (r) => fmt(r.best) }, { k: "median", t: "Mediaan", r: 1, f: (r) => fmt(r.median) }], drows.sort((a, b) => a.best - b.best), (r) => `go('driver',${js(r.driver)})`)}</div>
+    <div class="card"><h2>Top 10 rondes</h2>${table("kt", [{ k: "ms", t: "Tijd", f: (r) => `<b class="purple">${fmt(r.ms)}</b>` }, { k: "driver", t: "Coureur" }, { k: "ts", t: "Wanneer", f: (r) => fmtDate(r.ts) }, { k: "heat", t: "Heat" }], top)}</div>
+  </div>`;
+}
+
+async function vDrivers() {
+  const d = await api("drivers");
+  const q = (store.get("dq", "") || "").toLowerCase();
+  const rows = d.filter((x) => !q || x.driver.toLowerCase().includes(q));
+  const m = me(), f = follows();
+  return `<div class="card"><h2>Coureurs <small>${d.length} gezien in deze periode</small></h2>
+  <input placeholder="Zoek coureur…" value="${esc(store.get("dq", ""))}" oninput="store.set('dq',this.value);clearTimeout(window._dq);window._dq=setTimeout(render,250)" style="margin-bottom:10px;width:260px">
+  ${table("drv", [
+    { k: "rank", t: "#", v: (r) => r.best, f: (r, i) => i + 1 },
+    { k: "driver", t: "Coureur", f: (r) => `${esc(r.driver)}${r.driver === m ? ' <span class="pill" style="background:var(--red)">JIJ</span>' : ""}${f.includes(r.driver) ? ' <span class="pill">volg</span>' : ""}` },
+    { k: "best", t: "Beste", r: 1, f: (r) => `<span class="purple">${fmt(r.best)}</span>` },
+    { k: "median", t: "Mediaan", r: 1, f: (r) => fmt(r.median) },
+    { k: "std", t: "Constantheid σ", r: 1, f: (r) => fmt(r.std) },
+    { k: "heats", t: "Heats", r: 1 }, { k: "laps", t: "Rondes", r: 1 }, { k: "karts", t: "Karts", r: 1 },
+    { k: "last", t: "Laatst", r: 1, f: (r) => ago(r.last) },
+  ], rows.slice(0, 500), (r) => `go('driver',${js(r.driver)})`)}
+  </div>`;
+}
+
+async function vDriver(name) {
+  const [d, all, karts] = await Promise.all([api("driver/" + encodeURIComponent(name)), api("drivers"), api("karts")]);
+  const st = all.find((x) => x.driver === name) || {};
+  const isMe = me() === name, isF = follows().includes(name);
+  const myS = me() && !isMe ? all.find((x) => x.driver === me()) : null;
+  const heats = d.heats.slice(0, 12).reverse();
+  const series = heats.map((h, i) => ({ color: PALETTE[i % PALETTE.length], points: h.laps.filter((l) => l.flag !== "out").map((l) => ({ x: l.lap, y: l.ms, tip: `${h.heat} · ${fmtDate(h.ts)}\nkart ${h.kart} · ronde ${l.lap}: ${fmt(l.ms)}` })), dots: true, r: 2.5, width: 1.5 }));
+  const bestPerHeat = d.heats.slice().reverse().map((h) => { const c = h.laps.filter((l) => l.flag === "clean").map((l) => l.ms); return c.length ? { x: h.ts, y: Math.min(...c), tip: `${fmtDate(h.ts)} · kart ${h.kart}: ${fmt(Math.min(...c))}` } : null; }).filter(Boolean);
+  const kIdx = new Map(karts.karts.map((k) => [k.kart, k.driverCorrectedMs ?? k.heatIndexMs]));
+  return `
+  <button class="back" onclick="history.back()">← Terug</button>
+  <div class="card" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0;font-size:22px">${esc(name)}</h2>
+    <button onclick="setMe(${isMe ? "''" : `${js(name)}`})">${isMe ? "✓ Dit ben ik" : "Dit ben ik"}</button>
+    ${isMe ? "" : `<button onclick="toggleFollow(${js(name)})">${isF ? "✓ Gevolgd" : "☆ Volgen"}</button>`}</div>
+  <div class="grid g4" style="margin-top:16px">
+    <div class="card kpi"><div class="l">Beste ronde</div><div class="v purple">${fmt(st.best)}</div><div class="s">${myS ? `jij: ${fmt(myS.best)} (${fmtD(st.best - myS.best)})` : ""}</div></div>
+    <div class="card kpi"><div class="l">Mediaan</div><div class="v">${fmt(st.median)}</div><div class="s">schone rondes</div></div>
+    <div class="card kpi"><div class="l">Constantheid σ</div><div class="v">${fmt(st.std)}</div><div class="s">lager = constanter</div></div>
+    <div class="card kpi"><div class="l">Heats / rondes</div><div class="v">${st.heats || 0}</div><div class="s">${st.laps || 0} rondes in ${st.karts || 0} karts</div></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>Progressie <small>snelste schone ronde per heat</small></h2>${chart([{ color: "#A855F7", points: bestPerHeat, dots: true }], { xTime: true, h: 240, w: 560 })}</div>
+    <div class="card"><h2>Rondetijden laatste heats <small>per ronde</small></h2>${chart(series, { h: 240, xFmt: (v) => "R" + v, w: 560 })}</div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>Per kart <small>met kart-effect</small></h2>${table("dk", [{ k: "kart", t: "Kart", f: (r) => kno(r.kart) }, { k: "laps", t: "Rondes", r: 1 }, { k: "best", t: "Beste", r: 1, f: (r) => fmt(r.best) }, { k: "median", t: "Mediaan", r: 1, f: (r) => fmt(r.median) }, { k: "eff", t: "Kart-effect", r: 1, v: (r) => kIdx.get(r.kart), f: (r) => { const v = kIdx.get(r.kart); return v == null ? "–" : `<span class="${v < 0 ? "green" : "red"}">${fmtD(v, 2)}</span>`; } }], d.karts, (r) => `go('kart',${js(r.kart)})`)}</div>
+    <div class="card"><h2>Heats</h2>${table("dh", [{ k: "ts", t: "Wanneer", f: (r) => fmtDate(r.ts) }, { k: "heat", t: "Heat" }, { k: "kart", t: "Kart", f: (r) => kno(r.kart) }, { k: "n", t: "Rondes", r: 1, v: (r) => r.laps.length, f: (r) => r.laps.length }, { k: "b", t: "Beste", r: 1, v: (r) => Math.min(...r.laps.map((l) => l.ms)), f: (r) => fmt(Math.min(...r.laps.map((l) => l.ms))) }], d.heats.slice(0, 50))}</div>
+  </div>`;
+}
+
+async function vHeats() {
+  const h = await api("heats");
+  return `<div class="card"><h2>Heats <small>${h.length} in deze periode</small></h2>${table("heats", [
+    { k: "ts", t: "Wanneer", f: (r) => fmtDate(r.ts) }, { k: "name", t: "Heat" }, { k: "drivers", t: "Rijders", r: 1 }, { k: "laps", t: "Rondes", r: 1 },
+    { k: "best", t: "Snelste", r: 1, v: (r) => r.best && r.best.ms, f: (r) => (r.best ? `<span class="purple">${fmt(r.best.ms)}</span> <span class="muted">${esc(r.best.driver)} · #${esc(r.best.kart)}</span>` : "–") },
+    { k: "yellow", t: "Gele vlag", r: 1, f: (r) => (r.yellow ? `<span class="yellowc">⚑ ${r.yellow}</span>` : "") },
+  ], h.slice(0, 300), (r) => `go('heat',${r.id})`)}</div>`;
+}
+
+async function vHeat(id) {
+  const h = await (await fetch("api/heat/" + id)).json();
+  const ps = h.participants.map((p) => ({ ...p, best: Math.min(...p.laps.filter((l) => l.flag !== "out").map((l) => l.ms).concat([1e9])) })).sort((a, b) => a.best - b.best);
+  const fastest = ps[0] ? ps[0].best : 0;
+  const series = ps.map((p, i) => ({ color: PALETTE[i % PALETTE.length], points: p.laps.map((l) => ({ x: l.lap, y: l.ms, color: l.flag === "clean" ? null : FLAGC[l.flag], tip: `${p.driver} · kart ${p.kart}\nronde ${l.lap}: ${fmt(l.ms)}\n${FLAGN[l.flag]}` })), dots: true, r: 3, width: 1.6 }));
+  return `<button class="back" onclick="history.back()">← Terug</button>
+  <div class="card"><h2>${esc(h.name)}</h2>${chart(series, { h: 320, xFmt: (v) => "R" + v })}
+  <div class="legend">${ps.map((p, i) => `<span><i style="background:${PALETTE[i % PALETTE.length]}"></i>${esc(p.driver)} (#${esc(p.kart)})</span>`).join("")}</div></div>
+  <div class="card" style="margin-top:16px"><h2>Uitslag op snelste ronde</h2>${table("hp", [
+    { k: "i", t: "#", f: (r, i) => i + 1 }, { k: "driver", t: "Coureur" }, { k: "kart", t: "Kart", f: (r) => kno(r.kart) },
+    { k: "best", t: "Beste", r: 1, f: (r) => `<span class="${r.best === fastest ? "purple" : ""}">${fmt(r.best)}</span>` },
+    { k: "gap", t: "Verschil", r: 1, v: (r) => r.best - fastest, f: (r) => (r.best === fastest ? "" : fmtD(r.best - fastest)) },
+    { k: "laps", t: "Rondes", r: 1, v: (r) => r.laps.length, f: (r) => r.laps.length },
+    { k: "all", t: "Rondetijden", f: (r) => r.laps.map((l) => `<span style="color:${l.flag === "clean" ? (l.ms === r.best ? "var(--purple)" : "inherit") : FLAGC[l.flag]}">${fmt(l.ms)}</span>`).join(" ") },
+  ], ps, (r) => `go('driver',${js(r.driver)})`)}${flagLegend()}</div>`;
+}
+
+async function vConditions() {
+  const c = await api("conditions");
+  const DAYS = ["ma", "di", "wo", "do", "vr", "za", "zo"];
+  const hrs = c.hours.map((h, i) => ({ ...h, i })).filter((h) => h.laps >= 10);
+  const ref = median(hrs.map((h) => h.median).filter(Boolean)) || 0;
+  return `<div class="grid g2">
+    <div class="card"><h2>Ronde-in-heat <small>opwarmen van banden en coureur</small></h2>
+      ${chart([{ color: "#E10600", points: c.lapInHeat.map((l) => ({ x: l.lap, y: (l.rel - 1) * 100, tip: `ronde ${l.lap}: ${((l.rel - 1) * 100).toFixed(2)}% (${l.n} rondes)` })), dots: true, width: 2.5 }], { h: 240, yFmt: (v) => v.toFixed(1) + "%", xFmt: (v) => "R" + v, w: 560 })}
+      <div class="hint">Procentueel verschil met de mediaan van die heat. Laat zien vanaf welke ronde de banden op temperatuur zijn — handig om te weten wanneer je moet gaan pushen.</div></div>
+    <div class="card"><h2>Tijdstip van de dag <small>mediaan</small></h2>
+      ${bars(hrs.map((h) => ({ label: h.i + ":00", value: h.median - ref, color: h.median < ref ? "var(--green)" : "var(--red)", tip: `${h.i}:00 – ${h.laps} rondes\nmediaan ${fmt(h.median)}, snelste ${fmt(h.best)}` })), { fmt: (v) => fmtD(v, 2), labelW: 60 })}
+      <div class="hint">Verschilt de baan per dagdeel (temperatuur, rubber op de baan, drukte)?</div></div>
+    <div class="card"><h2>Dag van de week <small>mediaan</small></h2>
+      ${bars(c.weekdays.map((h, i) => ({ ...h, i })).filter((h) => h.laps >= 10).map((h) => ({ label: DAYS[h.i], value: h.median - ref, color: h.median < ref ? "var(--green)" : "var(--red)", tip: `${DAYS[h.i]} – ${h.laps} rondes\nmediaan ${fmt(h.median)}, snelste ${fmt(h.best)}` })), { fmt: (v) => fmtD(v, 2), labelW: 60 })}
+      <div class="hint">Let op: op drukke dagen rijden ook meer beginners, dat drukt de mediaan.</div></div>
+  </div>`;
+}
+
+function vAbout() {
+  return `<div class="card"><h2>Hoe werkt het?</h2><div class="hint" style="font-size:15px;max-width:820px">
+  <p><b>Logger.</b> De server luistert dag en nacht naar de openbare live timing van Kart en Fun Fabriek en slaat elke voltooide ronde op: tijd, coureur, kart, rondenummer en positie. Hiervoor zijn geen inloggegevens nodig. Valt de verbinding weg, dan maakt hij vanzelf opnieuw verbinding.</p>
+  <p><b>Schone rondes.</b> Niet elke ronde zegt iets over de kart. Daarom wordt elke ronde gemarkeerd: <span style="color:${FLAGC.out}">uitrijronde</span> (ronde 1), <span style="color:${FLAGC.yellow}">gele vlag</span> (meer dan de helft van het veld rijdt tegelijk &gt;15% langzamer), <span style="color:${FLAGC.slow}">langzaam</span> (&gt;12% boven het eigen niveau in die heat — spin of botsing) en <span style="color:${FLAGC.clean}">schoon</span>. Statistieken gebruiken alleen schone rondes.</p>
+  <p><b>Kart-effect.</b> Een snelle coureur maakt elke kart snel. Daarom vergelijken we elke ronde eerst met de rest van die heat (zelfde omstandigheden), en daarna met het eigen niveau van de coureur — gemeten over alle karts waarin hij of zij reed. Wat overblijft is het effect van de kart zelf, in seconden per ronde. Hoe meer heats er gelogd zijn, hoe betrouwbaarder dit wordt; reken op een paar weken.</p>
+  <p><b>Beperking.</b> De live timing stuurt alleen de laatste rondetijd. Als de server precies tijdens een ronde offline is, mist die ronde — de rest van de heat wordt gewoon opgeslagen.</p>
+  <p class="muted">Versie ${summary ? esc(summary.version) : ""} · database ${summary ? (summary.dbSizeBytes / 1048576).toFixed(1) + " MB" : ""}</p>
+  </div></div>`;
+}
+
+/* ---------------- router ---------------- */
+const VIEWS = { overview: vOverview, karts: vKarts, kart: vKart, drivers: vDrivers, driver: vDriver, heats: vHeats, heat: vHeat, conditions: vConditions, about: vAbout };
+let renderSeq = 0;
+async function render() {
+  const seq = ++renderSeq;
+  const y = scrollY;
+  try {
+    const html = await VIEWS[state.view](state.arg);
+    if (seq !== renderSeq) return;
+    const active = document.activeElement && document.activeElement.tagName === "INPUT" ? document.activeElement.placeholder : null;
+    app.innerHTML = html;
+    if (active) { const el = [...app.querySelectorAll("input")].find((i) => i.placeholder === active); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
+    scrollTo(0, y);
+  } catch (e) {
+    if (seq === renderSeq) app.innerHTML = `<div class="card"><div class="empty">Kon gegevens niet laden (${esc(e.message)}). Draait de server?</div></div>`;
+  }
+}
+function fromHash() {
+  const [v, a] = location.hash.slice(1).split("/");
+  state.view = VIEWS[v] ? v : "overview";
+  state.arg = a != null ? decodeURIComponent(a) : null;
+  document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("act", b.dataset.v === state.view));
+}
+window.addEventListener("popstate", () => { fromHash(); render(); });
+$("#nav").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { state.sort = {}; go(b.dataset.v); } });
+$("#period").onchange = (e) => { state.period = e.target.value; store.set("period", state.period); render(); };
+$("#group").onchange = (e) => { state.group = e.target.value; store.set("group", state.group); render(); };
+$("#csv").onclick = () => { location.href = `api/export.csv?period=${state.period}&group=${encodeURIComponent(state.group)}`; };
+window.store = store;
+fromHash();
+refreshStatus().then(render);
+setInterval(refreshStatus, 10000);
+// overzicht en live-heat elke 15 s verversen
+setInterval(() => { if (state.view === "overview" || state.view === "heat") render(); }, 15000);
+</script>
+</body>
+</html>

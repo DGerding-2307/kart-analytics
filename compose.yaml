@@ -1,0 +1,58 @@
+# Kart Analytics – Dockge / docker compose
+#
+# Plak dit in Dockge als nieuwe stack "kart-analytics" en klik op Deploy.
+# - De code wordt bij de eerste start van GitHub gehaald en daarna elk uur automatisch bijgewerkt.
+# - Watchtower houdt de Node.js-basisimage (beveiligingsupdates) bij.
+# - Alle rondes staan in ./data/kart.db en blijven bewaard bij updates en herstarts.
+#
+# Analysescherm: http://<ip-van-je-unraid>:8095
+
+services:
+  kart-analytics:
+    image: node:22-alpine
+    container_name: kart-analytics
+    restart: unless-stopped
+    ports:
+      - "8095:8095"
+    environment:
+      TZ: Europe/Amsterdam
+      PORT: "8095"
+      DB_PATH: /data/kart.db
+      REPO_URL: https://github.com/DGerding-2307/kart-analytics.git
+      AUTO_UPDATE: "true"
+      UPDATE_INTERVAL_MIN: "60"
+    volumes:
+      - ./data:/data
+      - ./app:/app
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - |
+        apk add --no-cache git tzdata >/dev/null 2>&1 || true
+        git config --global --add safe.directory /app
+        if [ ! -d /app/.git ]; then
+          echo "Eerste start: code ophalen van $$REPO_URL"
+          git clone "$$REPO_URL" /app
+        fi
+        exec node /app/updater.js
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8095/api/summary"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  watchtower:
+    image: nickfedor/watchtower
+    container_name: kart-analytics-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      TZ: Europe/Amsterdam
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_SCHEDULE: "0 0 5 * * *"
