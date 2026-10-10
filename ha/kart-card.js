@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "2.5.0";
+const KART_CARD_VERSION = "2.6.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -17,6 +17,18 @@ const PERIODS = [
 { id: "year", name: "Dit jaar" },
 { id: "ever", name: "Ooit" },
 ];
+const TEAM_COLORS = ["#E8002D", "#3671C6", "#27F4D2", "#FF8000", "#229971", "#0093CC", "#64C4FF", "#B6BABD", "#52E252", "#6692FF", "#FFD12E", "#F596C8"];
+function teamColor(k) {
+const n = parseInt(String(k).replace(/\D/g, ""), 10);
+if (isFinite(n)) return TEAM_COLORS[n % TEAM_COLORS.length];
+let h = 0;
+for (const c of String(k)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+return TEAM_COLORS[h % TEAM_COLORS.length];
+}
+function tla(name) {
+const w = String(name || "").trim().split(/\s+/)[0] || "";
+return w.replace(/[^A-Za-zÀ-ÿ]/g, "").slice(0, 3).toUpperCase() || "---";
+}
 function esc(s) {
 return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -420,6 +432,7 @@ ws.onmessage = (ev) => {
 try {
 this._live = JSON.parse(ev.data);
 this._liveAt = Date.now();
+this._trackPos();
 } catch (_) {
 return;
 }
@@ -459,6 +472,37 @@ this._wsState = "idle";
 }
 _renderLiveish() {
 if (this._tab === "live" || this._tab === "overview") this._render();
+}
+_trackPos() {
+const L = this._live;
+if (!L || !Array.isArray(L.D)) return;
+const pt = this._posTrack || (this._posTrack = {});
+if (pt._heat !== L.N) {
+for (const k of Object.keys(pt)) delete pt[k];
+pt._heat = L.N;
+}
+const now = Date.now();
+for (const d of L.D) {
+const k = String(d.D || d.N), p = Number(d.P) || 0;
+const e = pt[k];
+if (!e) pt[k] = { p, delta: 0, at: 0 };
+else if (p && e.p !== p) {
+e.delta = e.p - p;
+e.at = now;
+e.p = p;
+}
+}
+const bests = L.D.map((d) => Number(d.B)).filter((n) => n > 0);
+const fl = bests.length ? Math.min(...bests) : 0;
+if (fl && (!pt._fl || fl < pt._fl.ms)) {
+const who = L.D.find((d) => Number(d.B) === fl);
+pt._fl = { ms: fl, name: who && who.N, kart: who && who.K, at: now };
+}
+}
+_posArrow(d) {
+const e = this._posTrack && this._posTrack[String(d.D || d.N)];
+if (!e || !e.delta || Date.now() - e.at > 15000) return `<span class="pchg"></span>`;
+return e.delta > 0 ? `<span class="pchg up">▲${e.delta}</span>` : `<span class="pchg down">▼${-e.delta}</span>`;
 }
 _liveDrivers() {
 const L = this._live;
@@ -920,10 +964,10 @@ const last = Number(d.T);
 const best = Number(d.B);
 let lastCls = "";
 if (last > 0) lastCls = last === fastest ? "purple" : last === best ? "green" : "yellow";
-return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
-<div class="tpos">${esc(d.P)}</div>
-<div class="tname">${esc(d.N)}${me ? `<span class="tag">JIJ</span>` : ""}</div>
-<div class="tk">#${esc(d.K)}</div>
+return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}" style="--team:${teamColor(d.K)}">
+<div class="tpos">${esc(d.P)}</div>${this._posArrow(d)}
+<div class="tname"><span class="stripe"></span><b class="tla">${esc(tla(d.N))}</b><span class="full">${esc(d.N)}</span>${me ? `<span class="tag">JIJ</span>` : ""}</div>
+<div class="tk"><span class="carno">${esc(d.K)}</span></div>
 <div class="tl">${esc(d.L)}</div>
 <div class="tt ${lastCls}">${fmtLap(d.T)}</div>
 <div class="tt ${best && best === fastest ? "purple" : ""}">${fmtLap(d.B)}</div>
@@ -933,12 +977,13 @@ return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
 })
 .join("");
 return `${statusLine}
-<div class="heatbar">
-<div class="heatname">${esc(L.N || "Heat")}</div>
+<div class="heatbar f1bar">
+<div><div class="heatname">${esc(L.N || "Heat")}</div><div class="lapcount">RONDE <b>${Math.max(0, ...drivers.map((d) => Number(d.L) || 0))}</b></div></div>
 <div class="clock">${fmtClock(L.C)}</div>
 </div>
+${this._posTrack && this._posTrack._fl ? `<div class="flbanner"><span class="flicon">⏱</span><span class="fllabel">SNELSTE RONDE</span><b>${esc(this._posTrack._fl.name || "")}</b><span class="fltime">${fmtLap(this._posTrack._fl.ms)}</span><span class="muted small">kart ${esc(this._posTrack._fl.kart || "")}</span></div>` : ""}
 <div class="tower">
-<div class="trow head"><div class="tpos">P</div><div class="tname">Coureur</div><div class="tk">Kart</div><div class="tl">Rnd</div>
+<div class="trow head"><div class="tpos">P</div><span class="pchg"></span><div class="tname">Coureur</div><div class="tk">Kart</div><div class="tl">Rnd</div>
 <div class="tt">Laatste</div><div class="tt">Beste</div><div class="tg">Gap</div><div class="tf"></div></div>
 ${rows}
 </div>
@@ -1318,6 +1363,68 @@ text-transform:uppercase; letter-spacing:.5px; padding:5px 12px; cursor:pointer;
 .mapwrap svg { width:100%; height:auto; display:block; }
 .tips p { color:#ddd; line-height:1.45; margin:6px 0; }
 .tips .g { color:var(--f1-green); } .tips .y { color:var(--f1-yellow); } .tips .r { color:#ff5a52; }
+/* ---------- F1 TV-graphics laag ---------- */
+.f1 { background:
+ radial-gradient(ellipse at top, rgba(225,6,0,.08), transparent 60%),
+ repeating-linear-gradient(45deg, rgba(255,255,255,.018) 0 2px, transparent 2px 4px),
+ repeating-linear-gradient(-45deg, rgba(0,0,0,.25) 0 2px, transparent 2px 4px),
+ #101016; }
+.top { position:relative; background:linear-gradient(100deg, #0b0b10 0%, #0b0b10 62%, var(--f1-red) 62.2%, var(--f1-red) 66%, #0b0b10 66.2%); border-top:none; padding:16px 16px 12px; overflow:hidden; }
+.top::before { content:""; position:absolute; left:0; right:0; top:0; height:4px; background:linear-gradient(90deg, var(--f1-red), var(--f1-red) 70%, transparent); }
+.top::after { content:""; position:absolute; right:0; top:0; bottom:0; width:120px; opacity:.9;
+ background:conic-gradient(#fff 25%, #111 0 50%, #fff 0 75%, #111 0) 0 0/14px 14px;
+ -webkit-mask:linear-gradient(90deg, transparent, #000 70%); mask:linear-gradient(90deg, transparent, #000 70%); }
+.brand, .livepill { position:relative; z-index:1; }
+.title { font-size:1.35em; letter-spacing:1px; text-shadow:0 2px 0 rgba(0,0,0,.6); }
+.redbar { width:10px; height:30px; }
+.livepill { margin-right:110px; box-shadow:0 0 18px rgba(225,6,0,.7); }
+.tabs { background:#0b0b10; padding:0 6px; gap:4px; border-bottom:2px solid var(--f1-red); }
+.tab { transform:skewX(-14deg); margin:6px 0; padding:8px 16px; background:#1b1b24; border-bottom:none; font-style:italic; }
+.tab > * { transform:skewX(14deg); }
+.tab.on { background:var(--f1-red); color:#fff; box-shadow:0 0 14px rgba(225,6,0,.45); }
+.tab:hover:not(.on) { background:#262632; color:#fff; }
+.section-h { position:relative; }
+.section-h span { border-left:none; padding:3px 14px 3px 10px; background:linear-gradient(90deg, var(--f1-red), #8a0400); transform:skewX(-14deg); display:inline-block; font-size:.9em; }
+.section-h::after { content:""; flex:1; height:2px; margin-left:10px; background:linear-gradient(90deg, rgba(225,6,0,.6), transparent); order:1; }
+.section-h > button, .section-h > .muted { order:2; margin-left:10px; }
+.tile { position:relative; background:linear-gradient(160deg, #22222e, #17171f); border-left:none; border-top:3px solid var(--f1-line);
+ clip-path:polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%); padding:10px 14px 12px; }
+.tile.pb { border-top-color:var(--f1-green); } .tile.purple { border-top-color:var(--f1-purple); }
+.tile:not(.pb):not(.purple) { border-top-color:var(--f1-red); }
+.tvalue { font-style:italic; letter-spacing:.5px; }
+.fcard { clip-path:polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%); background:linear-gradient(160deg, #20202b, #16161d); }
+.fname { letter-spacing:1px; }
+.fpos { background:#0b0b10; color:#fff; padding:1px 7px; transform:skewX(-12deg); font-style:italic; }
+.strip { background:linear-gradient(90deg, #1d1d27, #14141b); border-left:4px solid var(--f1-line); font-style:italic; }
+.strip.on { border-left-color:var(--f1-red); }
+.heatbar.f1bar { background:linear-gradient(90deg, #0b0b10, #1b1b24); padding:10px 12px; border-left:6px solid var(--f1-red); align-items:center; }
+.lapcount { color:var(--f1-muted); font-weight:700; letter-spacing:2px; font-size:.8em; }
+.lapcount b { color:#fff; font-size:1.3em; font-style:italic; }
+.clock { background:#000; border:1px solid #333; padding:2px 12px; font-style:italic; letter-spacing:2px; color:#fff; box-shadow:inset 0 0 12px rgba(255,255,255,.05); }
+.flbanner { display:flex; align-items:center; gap:10px; margin:0 0 8px; padding:7px 12px; background:linear-gradient(90deg, #6a1bb3, #2a1145 70%); font-style:italic; }
+.flicon { font-size:1.1em; } .fllabel { font-weight:900; letter-spacing:1.5px; font-size:.8em; color:#e6cfff; }
+.flbanner b { text-transform:uppercase; } .fltime { font-weight:900; font-variant-numeric:tabular-nums; margin-left:auto; font-size:1.15em; }
+.tower { gap:3px; }
+.trow { background:linear-gradient(90deg, #1e1e28, #15151c); clip-path:polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+.trow.head { clip-path:none; background:none; }
+.trow:not(.head) .tpos { font-style:italic; clip-path:polygon(0 0, 100% 0, calc(100% - 5px) 100%, 0 100%); }
+.trow .tpos.p1, .trow:not(.head):nth-child(2) .tpos { }
+.stripe { display:inline-block; width:4px; height:16px; background:var(--team, var(--f1-red)); margin-right:8px; vertical-align:-2px; transform:skewX(-14deg); }
+.tla { font-weight:900; font-style:italic; letter-spacing:1px; font-size:1.05em; }
+.full { color:var(--f1-muted); font-weight:600; text-transform:none; margin-left:8px; font-size:.8em; }
+.carno { display:inline-block; min-width:26px; text-align:center; background:var(--team, #fff); color:#000; font-weight:900; font-style:italic; padding:0 4px; transform:skewX(-12deg); }
+.pchg { width:26px; flex:none; font-size:.72em; font-weight:900; text-align:center; }
+.pchg.up { color:var(--f1-green); } .pchg.down { color:#ff5a52; }
+.tt { font-style:italic; }
+.chip { transform:skewX(-12deg); font-style:italic; }
+.btn { font-style:italic; text-transform:uppercase; letter-spacing:.5px; clip-path:polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%); padding-right:20px; }
+.heat { background:linear-gradient(90deg, #1e1e28, #15151c); clip-path:polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
+.pbadge { transform:skewX(-12deg); }
+@media (max-width: 520px) {
+.full { display:none; }
+.top::after { width:70px; }
+.livepill { margin-right:60px; }
+}
 @media (max-width: 520px) {
 .body { padding:12px 10px 14px; }
 .tk, .tl { display:none; }
