@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.4.0";
+const KART_CARD_VERSION = "3.4.1";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -1572,19 +1572,20 @@ text-transform:uppercase; letter-spacing:.5px; padding:5px 12px; cursor:pointer;
  background:radial-gradient(circle at 70% 30%, color-mix(in srgb, var(--c) 80%, #fff 20%), var(--c) 45%, color-mix(in srgb, var(--c) 55%, #000 45%));
  clip-path:polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%); }
 .pcard::before { content:""; position:absolute; inset:0; background:repeating-linear-gradient(120deg, rgba(255,255,255,.07) 0 2px, transparent 2px 10px); pointer-events:none; }
+.pcard::after { content:""; position:absolute; left:0; right:0; top:0; height:48px; z-index:2; pointer-events:none; background:linear-gradient(180deg, color-mix(in srgb, var(--c) 85%, transparent), transparent); }
 .pcard.islive { box-shadow:inset 0 0 0 3px #fff; }
-.pc-pos { position:absolute; left:10px; top:4px; z-index:3; font-size:3.4em; font-weight:900; font-style:italic; line-height:1; color:#fff;
+.pc-pos { position:absolute; left:8px; top:2px; z-index:3; font-size:2.6em; font-weight:900; font-style:italic; line-height:1; color:#fff;
  text-shadow:0 2px 0 rgba(0,0,0,.35); -webkit-text-stroke:1px rgba(0,0,0,.25); }
-.pc-no { position:absolute; left:12px; top:62px; z-index:3; }
+.pc-no { position:absolute; left:48px; top:12px; z-index:3; }
 .pc-no .dno { margin:0; font-size:.85em; }
 .pc-star { position:absolute; right:6px; top:6px; z-index:3; color:#fff !important; text-shadow:0 1px 3px rgba(0,0,0,.6); }
 .pc-tag { position:absolute; right:8px; top:10px; z-index:3; background:#fff; color:#E10600; font-weight:900; font-style:italic; font-size:.75em; padding:1px 7px; transform:skewX(-12deg); }
 .pc-live { position:absolute; right:8px; top:36px; z-index:3; background:#00A3E0; color:#001; font-weight:900; font-style:italic; font-size:.7em; padding:1px 7px; transform:skewX(-12deg); letter-spacing:1px; }
 .pc-photo { position:absolute; inset:0; display:flex; align-items:flex-end; justify-content:center; z-index:1; }
-.pc-img { width:100%; height:100%; object-fit:cover; object-position:center 25%;
- -webkit-mask:linear-gradient(180deg, transparent 0, #000 22%, #000 62%, transparent 92%); mask:linear-gradient(180deg, transparent 0, #000 22%, #000 62%, transparent 92%); }
+.pc-img { width:100%; height:100%; object-fit:cover; object-position:center 30%;
+ -webkit-mask:linear-gradient(180deg, transparent 0, #000 7%, #000 88%, transparent 100%); mask:linear-gradient(180deg, transparent 0, #000 7%, #000 88%, transparent 100%); }
 .pc-ph { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:3.2em; font-weight:900; font-style:italic; color:rgba(255,255,255,.28); letter-spacing:2px; }
-.pc-foot { position:absolute; left:0; right:0; bottom:0; z-index:2; padding:30px 12px 12px; background:linear-gradient(180deg, transparent, rgba(0,0,0,.55) 40%, rgba(0,0,0,.85)); }
+.pc-foot { position:absolute; left:0; right:0; bottom:0; z-index:2; padding:16px 10px 9px; background:linear-gradient(180deg, transparent, rgba(0,0,0,.6) 45%, rgba(0,0,0,.8)); border-bottom:4px solid var(--c); }
 .pc-name { color:#fff; font-size:.95em; line-height:1.15; text-shadow:0 1px 2px rgba(0,0,0,.6); }
 .pc-name b { font-weight:900; text-transform:uppercase; font-style:italic; }
 .pc-time { display:flex; justify-content:space-between; align-items:baseline; gap:6px; margin-top:3px; font-weight:900; font-style:italic; font-size:1.15em; font-variant-numeric:tabular-nums; color:#fff; }
