@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.0.0";
+const KART_CARD_VERSION = "3.1.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -29,6 +29,35 @@ function tla(name) {
 const w = String(name || "").trim().split(/\s+/)[0] || "";
 return w.replace(/[^A-Za-zÀ-ÿ]/g, "").slice(0, 3).toUpperCase() || "---";
 }
+// Alleen wijzigingen doorvoeren in plaats van alles opnieuw opbouwen (geen flikkerende foto's/animaties)
+function morphNode(x, y) {
+if (x.nodeType !== y.nodeType || x.nodeName !== y.nodeName) {
+x.replaceWith(y);
+return;
+}
+if (x.nodeType === 3 || x.nodeType === 8) {
+if (x.nodeValue !== y.nodeValue) x.nodeValue = y.nodeValue;
+return;
+}
+if (x.nodeType !== 1) return;
+for (const at of [...x.attributes]) if (!y.hasAttribute(at.name)) x.removeAttribute(at.name);
+for (const at of [...y.attributes]) if (x.getAttribute(at.name) !== at.value) x.setAttribute(at.name, at.value);
+if (x.nodeName === "STYLE") {
+if (x.textContent !== y.textContent) x.textContent = y.textContent;
+return;
+}
+morphChildren(x, y);
+}
+function morphChildren(p, q) {
+const a = [...p.childNodes], b = [...q.childNodes];
+b.forEach((y, i) => {
+const x = a[i];
+if (!x) p.appendChild(y);
+else morphNode(x, y);
+});
+for (let i = b.length; i < a.length; i++) a[i].remove();
+}
+const BAD_PHOTOS = (window.__kartBadPhotos = window.__kartBadPhotos || new Set());
 function esc(s) {
 return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -420,11 +449,45 @@ const x = this._num(name);
 if (!x) return "";
 return `<span class="dno ${x.src}" title="${x.src === "sms" ? "Coureursnummer = plek ooit in het SMS-Timing-klassement" : "Coureursnummer = plek in je eigen logger (nog niet in SMS-Timing-top)"}">${x.n}</span>`;
 }
+_kaViaHA() {
+return this._kaMode === "rest" || (location.protocol === "https:" && this._kaBase().startsWith("http:"));
+}
 _av(pid, cls = "av", size = 100) {
 if (!pid) return "";
 const sum = this._ka.summary && this._ka.summary.data;
 if (sum && sum.photos === false) return "";
-return `<img class="${cls}" src="${esc(this._kaBase())}/api/photo/${esc(pid)}?size=${size}" alt="" loading="lazy" onerror="this.remove()">`;
+if (this._kaViaHA()) {
+// via Home Assistant ophalen als tekst (https-pagina mag geen http-plaatjes laden)
+const P = (this._photos = this._photos || {});
+const k = `${pid}_${size}`;
+const e = P[k];
+if (e && e.data) return `<img class="${cls}" src="${e.data}" alt="">`;
+if (!e) {
+P[k] = { loading: true };
+(this._photoQ = this._photoQ || []).push(() =>
+this._kaFetch(`photo64/${pid}?size=${size}`)
+.then((r) => (P[k] = { data: r && r.data, none: !(r && r.data) }))
+.catch(() => (P[k] = { none: true }))
+.finally(() => this._render())
+);
+this._pumpPhotos();
+}
+return "";
+}
+const src = `${this._kaBase()}/api/photo/${pid}?size=${size}`;
+if (BAD_PHOTOS.has(src)) return "";
+return `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy" onerror="window.__kartBadPhotos&&window.__kartBadPhotos.add(this.getAttribute('src'));this.remove()">`;
+}
+_pumpPhotos() {
+this._photoBusy = this._photoBusy || 0;
+while (this._photoBusy < 3 && this._photoQ && this._photoQ.length) {
+const job = this._photoQ.shift();
+this._photoBusy++;
+job().finally(() => {
+this._photoBusy--;
+this._pumpPhotos();
+});
+}
 }
 _kaTop(name) {
 const d = this._ka.drivers && this._ka.drivers.data;
@@ -824,7 +887,7 @@ else if (this._tab === "heats") body = this._renderHeats();
 else if (this._tab === "ranking") body = this._renderRanking();
 else body = this._renderAnalytics();
 const liveOn = this._wsState === "open" && this._liveDrivers().length > 0;
-this.shadowRoot.innerHTML = `
+const html = `
 <style>${KART_CSS}</style>
 <ha-card>
 <div class="f1">
@@ -840,6 +903,12 @@ ${tabs
 <div class="body">${this._offline ? `<div class="offline">Offline · SMS-Timing niet bereikbaar – opgeslagen gegevens${this._archive && this._archive.saved ? ` (bijgewerkt ${fmtDate(this._archive.saved)})` : ""}</div>` : ""}${body}</div>
 </div>
 </ha-card>`;
+if (html === this._lastHtml) return;
+this._lastHtml = html;
+const tpl = document.createElement("template");
+tpl.innerHTML = html;
+if (!this.shadowRoot.firstChild) this.shadowRoot.appendChild(tpl.content);
+else morphChildren(this.shadowRoot, tpl.content);
 }
 _renderOverview() {
 const grp = String(this._config.score_group);

@@ -27,7 +27,7 @@ const CFG = {
   smsApi: process.env.SMS_API || "https://mobile-api7.sms-timing.com/api",
   smsClient: process.env.SMS_CLIENT || "kartenfunfabriek",
 };
-const VERSION = "1.4.0";
+const VERSION = "1.5.0";
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -648,6 +648,13 @@ function csv(opts) {
 }
 
 const server = http.createServer(async (req, res) => {
+  // foto als tekst (base64), voor Home Assistant via https (rest_command kan geen plaatjes doorgeven)
+  const m64 = /^\/api\/photo64\/(\d{5,25})$/.exec(req.url.split("?")[0]);
+  if (m64) {
+    const size = Math.min(300, Math.max(40, Number(new URL(req.url, "http://x").searchParams.get("size")) || 100));
+    const buf = await photo(m64[1], size).catch(() => null);
+    return send(res, 200, { data: buf ? `data:image/jpeg;base64,${buf.toString("base64")}` : null });
+  }
   const m = /^\/api\/photo\/(\d{5,25})$/.exec(req.url.split("?")[0]);
   if (m) {
     const size = Math.min(300, Math.max(40, Number(new URL(req.url, "http://x").searchParams.get("size")) || 100));
