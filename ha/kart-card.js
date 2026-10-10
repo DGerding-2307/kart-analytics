@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "2.8.0";
+const KART_CARD_VERSION = "2.9.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -400,6 +400,8 @@ if (f) return String(f.personId);
 const m = (this._pidMap = this._pidMap || {});
 const key = liveName(name).toLowerCase();
 if (m[key]) return m[key];
+const pm = this._ka.people && this._ka.people.data;
+if (pm && pm[key]) return String(pm[key]);
 for (const c of Object.values(this._ranking)) for (const r of c.rows || []) if (r.personId) m[liveName(r.participant).toLowerCase()] = String(r.personId);
 const add = (det) => { for (const p of (det && det.participants) || []) if (p.personId) m[liveName(`${p.firstName || ""} ${p.name || ""}`).toLowerCase()] = String(p.personId); };
 for (const c of Object.values(this._heatCache)) add(c.details);
@@ -646,6 +648,7 @@ if (this._tab === "heats") this._ensureHeats();
 if (this._tab === "ranking") this._rankSrc === "own" ? this._loadOwnRanking() : this._ensureRanking(this._group, this._period);
 if (this._tab === "analytics") this._loadAnalytics();
 else this._kaGet("summary", "summary", 60000);
+this._kaGet("people", "people", 10 * 60000);
 }
 _matches(f, name, personId) {
 if (personId && f.personId && String(personId) === String(f.personId)) return true;

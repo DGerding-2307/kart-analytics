@@ -27,7 +27,7 @@ const CFG = {
   smsApi: process.env.SMS_API || "https://mobile-api7.sms-timing.com/api",
   smsClient: process.env.SMS_CLIENT || "kartenfunfabriek",
 };
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -66,6 +66,7 @@ CREATE INDEX IF NOT EXISTS laps_kart ON laps(kart);
 CREATE INDEX IF NOT EXISTS laps_driver ON laps(driver);
 CREATE INDEX IF NOT EXISTS laps_ts ON laps(ts);
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS people (key TEXT PRIMARY KEY, name TEXT, person_id TEXT NOT NULL, seen INTEGER);
 `);
 
 const q = {
@@ -542,6 +543,65 @@ async function photo(pid, size) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Namen koppelen aan personId (uit de klassementen), voor foto's      */
+/* ------------------------------------------------------------------ */
+
+// "Dennis Gerding" / "danny e." -> "dennis g." / "danny e."
+function nameKey(n) {
+  const w = String(n || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!w.length) return "";
+  return w.length === 1 ? w[0] : `${w[0]} ${w[w.length - 1].charAt(0)}.`;
+}
+const peopleUpsert = db.prepare(
+  "INSERT INTO people (key, name, person_id, seen) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET name = excluded.name, person_id = excluded.person_id, seen = excluded.seen"
+);
+let peopleCache = null;
+function peopleMap() {
+  if (!peopleCache) peopleCache = Object.fromEntries(db.prepare("SELECT key, person_id FROM people").all().map((r) => [r.key, r.person_id]));
+  return peopleCache;
+}
+async function refreshPeople() {
+  if (!CFG.smsAccessToken || !CFG.smsDeviceToken) return;
+  const rsc = CFG.resourceKey.split("@")[0];
+  const now = new Date();
+  const day = (d) => new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const starts = ["", day(now), day(monday), day(new Date(now.getFullYear(), now.getMonth(), 1)), day(new Date(now.getFullYear(), 0, 1))];
+  let n = 0;
+  for (const scg of ["117858", "117860"]) {
+    for (const st of starts) {
+      try {
+        const url = `${CFG.smsApi}/ranking/records-v2/${CFG.smsClient}?rscId=${rsc}&scgId=${scg}&sorting=0${st ? `&startDate=${encodeURIComponent(st)}` : ""}`;
+        const r = await fetch(url, {
+          headers: { "X-Fast-AccessToken": CFG.smsAccessToken, "X-Fast-DeviceToken": CFG.smsDeviceToken, "X-Fast-Version": CFG.smsVersion, Accept: "application/json" },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!r.ok) continue;
+        const rows = await r.json();
+        for (const row of Array.isArray(rows) ? rows : []) {
+          const k = nameKey(row.participant);
+          if (k && row.personId) {
+            peopleUpsert.run(k, String(row.participant), String(row.personId), Date.now());
+            n++;
+          }
+        }
+      } catch (e) {
+        log("klassement ophalen mislukt", e.message);
+      }
+    }
+  }
+  peopleCache = null;
+  log(`namenlijst bijgewerkt (${n} regels, ${Object.keys(peopleMap()).length} personen)`);
+}
+function liveWithPeople() {
+  const snap = live.lastSnapshot;
+  if (!snap || !Array.isArray(snap.D)) return snap;
+  const m = peopleMap();
+  return { ...snap, D: snap.D.map((d) => ({ ...d, PID: m[nameKey(d.N)] || null })) };
+}
+
+/* ------------------------------------------------------------------ */
 /* HTTP                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -583,7 +643,8 @@ const server = http.createServer(async (req, res) => {
     const opts = { since: sinceFrom(P), until: Number(P.get("until")) || 0, grp: P.get("group") || "Volwassenen" };
     const p = url.pathname;
     if (p === "/api/summary") return send(res, 200, summary());
-    if (p === "/api/live") return send(res, 200, { state: live.state, at: live.lastMessage, snapshot: live.lastSnapshot });
+    if (p === "/api/live") return send(res, 200, { state: live.state, at: live.lastMessage, snapshot: liveWithPeople() });
+    if (p === "/api/people") return send(res, 200, peopleMap());
     if (p === "/api/karts") return send(res, 200, kartStats(opts));
     if (p.startsWith("/api/kart/")) return send(res, 200, kartDetail(decodeURIComponent(p.slice(10)), opts));
     if (p === "/api/drivers") return send(res, 200, driverStats(opts));
@@ -611,6 +672,9 @@ if (require.main === module) {
   server.listen(CFG.port, () => log(`Kart Analytics ${VERSION} op poort ${CFG.port}, database ${CFG.dbPath}`));
   connect();
   startWatchdog();
+  // namenlijst voor foto's: bij start en elke 20 minuten (alleen als de sleutels zijn ingesteld)
+  setTimeout(refreshPeople, 5000);
+  setInterval(refreshPeople, 20 * 60000);
   const stop = () => {
     log("afsluiten");
     try {
