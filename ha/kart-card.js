@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.3.0";
+const KART_CARD_VERSION = "3.4.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -1054,36 +1054,34 @@ return { f, name: f.name, pid: f.personId || this._pidFor(f.name), best, live: t
 }),
 ].sort((x, y) => (x.best ? x.best.ms : 1e12) - (y.best ? y.best.ms : 1e12));
 const lead = rows[0] && rows[0].best ? rows[0].best.ms : 0;
+const PCOL = ["#FF8000", "#27F4D2", "#3671C6", "#229971", "#64C4FF", "#52E252", "#0093CC", "#B6BABD", "#F596C8", "#FFD12E"];
+let fi = 0;
 const html = rows
 .map((r, i) => {
 const ms = r.best ? r.best.ms : 0;
 const t = this._kaTop(r.name);
-const meta = [
-r.live ? `<span class="fbadge">LIVE P${esc(r.live.P)} · ${fmtLap(r.live.T)}</span>` : "",
-r.pos ? `P${esc(r.pos)} ooit` : "",
-t ? `top ${t.pct}%` : "",
-!r.me && r.shared ? `onderling ${r.ahead}–${r.shared - r.ahead}` : "",
-!r.me && r.best && r.best.src ? esc(r.best.src) : "",
-!ms ? (pending ? "zoeken…" : "nog geen tijd bekend") : "",
-].filter(Boolean).join(" · ");
-const vsMe = r.me || !ms || !myBest ? "" : `<span class="${ms < myBest ? "red" : "green"}">${fmtDelta(ms - myBest)}</span>`;
-const pc = i < 3 && ms ? ` p${i + 1}` : "";
-return `<div class="trow frow ${r.me ? "me" : "fol"} ${r.live ? "islive" : ""}" style="--team:${r.live ? teamColor(r.live.K) : r.me ? "var(--f1-red)" : "var(--f1-follow)"}">
-<div class="tpos${pc}">${ms ? i + 1 : "–"}</div>
-<div class="tname">${this._av(r.pid, "av fav-s")}${this._dno(r.name)}<b class="tla">${esc(tla(r.name))}</b><span class="full">${esc(r.name)}</span>${r.me ? `<span class="tag">JIJ</span>` : ""}
-<div class="muted small fmeta">${meta}</div></div>
-<div class="tt ${i === 0 && ms ? "purple" : ""}">${fmtLap(ms)}</div>
-<div class="tg" title="achterstand op P1 van deze lijst">${i === 0 || !ms || !lead ? "" : fmtDelta(ms - lead)}</div>
-<div class="tg" title="verschil met jou">${vsMe}</div>
-<div class="tf">${r.me ? "" : `<button class="star on" title="Niet meer volgen" data-action="unfollow" data-name="${esc(r.f.name)}" data-pid="${esc(r.f.personId || "")}">★</button>`}</div>
+const col = r.me ? "#E10600" : PCOL[fi++ % PCOL.length];
+const vsMe = r.me || !ms || !myBest ? "" : `<span class="${ms < myBest ? "pc-red" : "pc-green"}">${fmtDelta(ms - myBest)}</span>`;
+const img = this._av(r.pid, "pc-img", 200);
+const parts = String(r.name).trim().split(/\s+/);
+const meta = [r.pos ? `P${esc(r.pos)} ooit` : "", t ? `top ${t.pct}%` : "", !r.me && r.shared ? `${r.ahead}–${r.shared - r.ahead} onderling` : ""].filter(Boolean).join(" · ");
+return `<div class="pcard ${r.me ? "me" : ""} ${r.live ? "islive" : ""}" style="--c:${col}">
+<div class="pc-pos">${ms ? i + 1 : "–"}</div>
+${this._dno(r.name) ? `<div class="pc-no">${this._dno(r.name)}</div>` : ""}
+${r.me ? `<span class="pc-tag">JIJ</span>` : `<button class="star on pc-star" title="Niet meer volgen" data-action="unfollow" data-name="${esc(r.f.name)}" data-pid="${esc(r.f.personId || "")}">★</button>`}
+${r.live ? `<span class="pc-live">LIVE P${esc(r.live.P)}</span>` : ""}
+<div class="pc-photo">${img || `<div class="pc-ph">${esc(tla(r.name))}</div>`}</div>
+<div class="pc-foot">
+<div class="pc-name">${esc(parts[0] || "")} <b>${esc(parts.slice(1).join(" "))}</b></div>
+<div class="pc-time"><span class="${i === 0 && ms ? "pc-purple" : ""}">${ms ? fmtLap(ms) : pending ? "zoeken…" : "geen tijd"}</span>${vsMe}</div>
+${meta ? `<div class="pc-meta">${meta}</div>` : ""}
+</div>
 </div>`;
 })
 .join("");
 const hint = this._follows.length ? "" : `<div class="muted small" style="margin-top:6px">Tik op ☆ naast een naam in Live, Heats of Klassement om coureurs aan deze ranglijst toe te voegen.</div>`;
-return `<div class="section-h"><span>Mijn ranglijst</span><span class="muted small">jij + ${this._follows.length} gevolgd · op beste ronde</span></div>
-<div class="tower ftower">
-<div class="trow head"><div class="tpos">P</div><div class="tname">Coureur</div><div class="tt">Beste</div><div class="tg">Interval</div><div class="tg">Δ jij</div><div class="tf"></div></div>
-${html}</div>${hint}`;
+return `<div class="section-h"><span>Mijn ranglijst</span><span class="muted small">jij + ${this._follows.length} gevolgd · op beste ronde${lead ? ` · P1 ${fmtLap(lead)}` : ""}</span></div>
+<div class="pgrid">${html}</div>${hint}`;
 }
 _renderLive() {
 const st = this._wsState;
@@ -1568,6 +1566,32 @@ text-transform:uppercase; letter-spacing:.5px; padding:5px 12px; cursor:pointer;
 .btn { font-style:italic; text-transform:uppercase; letter-spacing:.5px; clip-path:polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%); padding-right:20px; }
 .heat { background:linear-gradient(90deg, #1e1e28, #15151c); clip-path:polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%); }
 .pbadge { transform:skewX(-12deg); }
+/* ---------- mijn ranglijst: F1-coureurskaarten ---------- */
+.pgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
+.pcard { position:relative; overflow:hidden; aspect-ratio:3/4; min-height:200px;
+ background:radial-gradient(circle at 70% 30%, color-mix(in srgb, var(--c) 80%, #fff 20%), var(--c) 45%, color-mix(in srgb, var(--c) 55%, #000 45%));
+ clip-path:polygon(0 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%); }
+.pcard::before { content:""; position:absolute; inset:0; background:repeating-linear-gradient(120deg, rgba(255,255,255,.07) 0 2px, transparent 2px 10px); pointer-events:none; }
+.pcard.islive { box-shadow:inset 0 0 0 3px #fff; }
+.pc-pos { position:absolute; left:10px; top:4px; z-index:3; font-size:3.4em; font-weight:900; font-style:italic; line-height:1; color:#fff;
+ text-shadow:0 2px 0 rgba(0,0,0,.35); -webkit-text-stroke:1px rgba(0,0,0,.25); }
+.pc-no { position:absolute; left:12px; top:62px; z-index:3; }
+.pc-no .dno { margin:0; font-size:.85em; }
+.pc-star { position:absolute; right:6px; top:6px; z-index:3; color:#fff !important; text-shadow:0 1px 3px rgba(0,0,0,.6); }
+.pc-tag { position:absolute; right:8px; top:10px; z-index:3; background:#fff; color:#E10600; font-weight:900; font-style:italic; font-size:.75em; padding:1px 7px; transform:skewX(-12deg); }
+.pc-live { position:absolute; right:8px; top:36px; z-index:3; background:#00A3E0; color:#001; font-weight:900; font-style:italic; font-size:.7em; padding:1px 7px; transform:skewX(-12deg); letter-spacing:1px; }
+.pc-photo { position:absolute; inset:0; display:flex; align-items:flex-end; justify-content:center; z-index:1; }
+.pc-img { width:100%; height:100%; object-fit:cover; object-position:center 25%;
+ -webkit-mask:linear-gradient(180deg, transparent 0, #000 22%, #000 62%, transparent 92%); mask:linear-gradient(180deg, transparent 0, #000 22%, #000 62%, transparent 92%); }
+.pc-ph { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:3.2em; font-weight:900; font-style:italic; color:rgba(255,255,255,.28); letter-spacing:2px; }
+.pc-foot { position:absolute; left:0; right:0; bottom:0; z-index:2; padding:30px 12px 12px; background:linear-gradient(180deg, transparent, rgba(0,0,0,.55) 40%, rgba(0,0,0,.85)); }
+.pc-name { color:#fff; font-size:.95em; line-height:1.15; text-shadow:0 1px 2px rgba(0,0,0,.6); }
+.pc-name b { font-weight:900; text-transform:uppercase; font-style:italic; }
+.pc-time { display:flex; justify-content:space-between; align-items:baseline; gap:6px; margin-top:3px; font-weight:900; font-style:italic; font-size:1.15em; font-variant-numeric:tabular-nums; color:#fff; }
+.pc-time .pc-red, .pc-time .pc-green { font-size:.72em; }
+.pc-red { color:#ff8a84; } .pc-green { color:#5dff9f; } .pc-purple { color:#e3c2ff; text-shadow:0 0 10px rgba(166,77,255,.8); }
+.pc-meta { color:rgba(255,255,255,.75); font-size:.68em; font-style:italic; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+@media (max-width: 520px) { .pgrid { grid-template-columns:repeat(2, 1fr); } .pc-pos { font-size:2.8em; } }
 /* ---------- mijn ranglijst ---------- */
 .ftower .trow { padding-top:8px; padding-bottom:8px; }
 .ftower .tname { white-space:normal; }
