@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.1.0";
+const KART_CARD_VERSION = "3.1.1";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -58,6 +58,8 @@ else morphNode(x, y);
 for (let i = b.length; i < a.length; i++) a[i].remove();
 }
 const BAD_PHOTOS = (window.__kartBadPhotos = window.__kartBadPhotos || new Set());
+// mislukte foto's na 2 minuten opnieuw proberen (bv. als de server net herstartte)
+if (!window.__kartBadPhotosTimer) window.__kartBadPhotosTimer = setInterval(() => BAD_PHOTOS.clear(), 120000);
 function esc(s) {
 return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -360,7 +362,7 @@ const g = SCORE_GROUPS.find((x) => x.id === String(this._config.score_group));
 return g ? g.name : "Volwassenen";
 }
 async _kaFetch(path) {
-if (this._kaMode !== "rest" && !(location.protocol === "https:" && this._kaBase().startsWith("http:"))) {
+if ((this._kaMode !== "rest" || Date.now() - (this._kaRestAt || 0) > 120000) && !(location.protocol === "https:" && this._kaBase().startsWith("http:"))) {
 try {
 const ctl = new AbortController();
 const t = setTimeout(() => ctl.abort(), 6000);
@@ -375,6 +377,7 @@ return await r.json();
 try {
 const c = await this._call("kart_analytics", { path });
 this._kaMode = "rest";
+this._kaRestAt = Date.now();
 return c;
 } catch (_) {
 this._kaMode = null;
@@ -450,7 +453,8 @@ if (!x) return "";
 return `<span class="dno ${x.src}" title="${x.src === "sms" ? "Coureursnummer = plek ooit in het SMS-Timing-klassement" : "Coureursnummer = plek in je eigen logger (nog niet in SMS-Timing-top)"}">${x.n}</span>`;
 }
 _kaViaHA() {
-return this._kaMode === "rest" || (location.protocol === "https:" && this._kaBase().startsWith("http:"));
+// alleen nodig als de pagina https is en de server http (browser blokkeert dan gemengde inhoud)
+return location.protocol === "https:" && this._kaBase().startsWith("http:");
 }
 _av(pid, cls = "av", size = 100) {
 if (!pid) return "";
@@ -462,12 +466,12 @@ const P = (this._photos = this._photos || {});
 const k = `${pid}_${size}`;
 const e = P[k];
 if (e && e.data) return `<img class="${cls}" src="${e.data}" alt="">`;
-if (!e) {
+if (!e || (e.none && Date.now() - (e.at || 0) > 120000)) {
 P[k] = { loading: true };
 (this._photoQ = this._photoQ || []).push(() =>
 this._kaFetch(`photo64/${pid}?size=${size}`)
-.then((r) => (P[k] = { data: r && r.data, none: !(r && r.data) }))
-.catch(() => (P[k] = { none: true }))
+.then((r) => (P[k] = { data: r && r.data, none: !(r && r.data), at: Date.now() }))
+.catch(() => (P[k] = { none: true, at: Date.now() }))
 .finally(() => this._render())
 );
 this._pumpPhotos();
