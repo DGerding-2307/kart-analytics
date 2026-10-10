@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.1.2";
+const KART_CARD_VERSION = "3.1.3";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -338,7 +338,7 @@ service_data: data,
 return_response: true,
 });
 } catch (e) {
-const msg = (e && (e.message || e.code)) || String(e);
+const msg = (e && [e.code, e.message].filter(Boolean).join(": ")) || JSON.stringify(e);
 throw new Error(`rest_command.${service} werkt niet (${msg}). Staat het in configuration.yaml en is HA herstart?`);
 }
 const resp = r && r.response;
@@ -379,9 +379,10 @@ const c = await this._call("kart_analytics", { path });
 this._kaMode = "rest";
 this._kaRestAt = Date.now();
 return c;
-} catch (_) {
+} catch (e) {
 this._kaMode = null;
-throw new Error(`Kart Analytics-server niet bereikbaar (${this._kaBase()}).`);
+console.warn("kart-card: kart_analytics", path, e);
+throw new Error(`Kart Analytics-server niet bereikbaar (${this._kaBase()}): ${(e && e.message) || e}`);
 }
 }
 _kaGet(key, path, maxAge = 60000, force = false) {
