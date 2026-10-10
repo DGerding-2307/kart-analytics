@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "2.4.0";
+const KART_CARD_VERSION = "2.5.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -379,6 +379,15 @@ _kaDriver(name) {
 const d = this._ka.drivers && this._ka.drivers.data;
 if (!Array.isArray(d) || !name) return null;
 return d.find((x) => sameName(x.driver, name) || sameName(x.driver, liveName(name))) || null;
+}
+_kaTop(name) {
+const d = this._ka.drivers && this._ka.drivers.data;
+if (!Array.isArray(d) || !name) return null;
+const list = d.filter((x) => x.best > 0).sort((a, b) => a.best - b.best);
+const i = list.findIndex((x) => sameName(x.driver, name) || sameName(x.driver, liveName(name)));
+if (i < 0) return null;
+const pct = Math.max(1, Math.ceil(((i + 1) / list.length) * 100));
+return { rank: i + 1, total: list.length, pct };
 }
 _wantsLive() {
 return this._connected && (this._tab === "live" || this._tab === "overview");
@@ -806,6 +815,7 @@ last ? `${esc(last.bestTime)} · ${fmtDate(last.date)}` : ""
 ),
 tile("Heats gereden", heats ? String(heats.length) : loading(), heats && heats.length ? `sinds ${fmtDate(heats[heats.length - 1].date, false)}` : ""),
 this._kaKartTile(tile),
+this._kaTopTile(tile),
 ].join("");
 return `${errHtml}
 ${this._renderLiveStrip()}
@@ -871,6 +881,7 @@ return `<div class="fcard ${live ? "islive" : ""}">
 <div class="fh"><span class="fname">${esc(f.name)}</span>
 ${live ? `<span class="fbadge">LIVE P${esc(live.P)}</span>` : ""}
 ${best && best.pos ? `<span class="fpos">P${esc(best.pos)} ooit</span>` : ""}
+${(() => { const t = this._kaTop(f.name); return t ? `<span class="fpos" title="plek ${t.rank} van ${t.total} (eigen logger)">top ${t.pct}%</span>` : ""; })()}
 ${recLaps ? `<span class="fpos">${recLaps} ronden opgeslagen</span>` : ""}
 <button class="star on" title="Niet meer volgen" data-action="unfollow" data-name="${esc(f.name)}" data-pid="${esc(f.personId || "")}">★</button></div>
 <div class="fgrid">
@@ -887,7 +898,7 @@ live
 </div>`;
 })
 .join("");
-return `<div class="section-h"><span>Gevolgde coureurs</span><span class="muted small">jouw beste: ${fmtLap(myBest)}</span></div>
+return `<div class="section-h"><span>Gevolgde coureurs</span><span class="muted small">jouw beste: ${fmtLap(myBest)}${(() => { const t = this._kaTop(this._myLiveName()); return t ? ` · top ${t.pct}%` : ""; })()}</span></div>
 <div class="follows">${cards}</div>`;
 }
 _renderLive() {
@@ -1090,6 +1101,12 @@ return `${head}
 <div class="tower">${rows}</div>
 <div class="toolbar"><span class="muted small">Top 10 en de plekken rond jou</span><button class="btn small" data-action="refresh-ranking">Vernieuwen</button></div>`;
 }
+_kaTopTile(tile) {
+if (!this._ka.drivers) return "";
+const t = this._kaTop(this._myLiveName());
+if (!t) return tile("Jouw top-%", "–", this._ka.drivers.error ? "logger niet bereikbaar" : "nog niet gelogd");
+return tile("Jij hoort bij de", `top ${t.pct}%`, `plek ${t.rank} van ${t.total} · eigen logger`, "purple");
+}
 _kaKartTile(tile) {
 const k = this._ka.karts;
 if (!k) return "";
@@ -1113,7 +1130,7 @@ const fol = !me && this._isFollowed(r.driver, "");
 const pc = i < 3 ? ` p${i + 1}` : "";
 return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
 <div class="tpos${pc}">${i + 1}</div>
-<div class="tname">${esc(r.driver)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">${r.heats} heat${r.heats === 1 ? "" : "s"} · ${r.laps} rondes · ${fmtAgo(r.last)}</div></div>
+<div class="tname">${esc(r.driver)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">top ${Math.max(1, Math.ceil(((i + 1) / rows.length) * 100))}% · ${r.heats} heat${r.heats === 1 ? "" : "s"} · ${r.laps} rondes · ${fmtAgo(r.last)}</div></div>
 <div class="tt ${i === 0 ? "purple" : ""}">${fmtLap(r.best)}</div>
 <div class="tg">${i === 0 ? "" : fmtDelta(r.best - lead)}</div>
 <div class="tf">${me ? "" : this._followBtn(r.driver, "")}</div>
@@ -1163,6 +1180,7 @@ const meHtml = me
 <div class="tile pb"><div class="tlabel">Beste ronde</div><div class="tvalue">${fmtLap(me.best)}</div><div class="tsub">eigen logger</div></div>
 <div class="tile"><div class="tlabel">Mediaan</div><div class="tvalue">${fmtLap(me.median)}</div><div class="tsub">schone rondes</div></div>
 <div class="tile"><div class="tlabel">Constantheid</div><div class="tvalue">±${me.std ? (me.std / 1000).toFixed(2) : "–"}s</div><div class="tsub">spreiding per ronde</div></div>
+${(() => { const t = this._kaTop(me.driver); return t ? `<div class="tile purple"><div class="tlabel">Top</div><div class="tvalue">${t.pct}%</div><div class="tsub">plek ${t.rank} van ${t.total}</div></div>` : ""; })()}
 <div class="tile"><div class="tlabel">Gelogd</div><div class="tvalue">${me.heats}</div><div class="tsub">heats · ${me.laps} rondes in ${me.karts} karts</div></div>
 </div>
 <a class="btn small" style="display:inline-block;margin-top:8px;text-decoration:none" href="${esc(base)}/#driver/${encodeURIComponent(me.driver)}" target="_blank" rel="noopener">Mijn analyse ↗</a>`
