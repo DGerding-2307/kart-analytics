@@ -27,7 +27,7 @@ const CFG = {
   smsApi: process.env.SMS_API || "https://mobile-api7.sms-timing.com/api",
   smsClient: process.env.SMS_CLIENT || "kartenfunfabriek",
 };
-const VERSION = "1.5.1";
+const VERSION = "1.6.0";
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -319,10 +319,91 @@ function loadLaps({ since = 0, until = 0, grp = "Volwassenen" } = {}) {
   return rows;
 }
 
+/*
+ * Regressiemodel (vaste effecten, ridge):
+ *   rondetijd = gemiddelde + coureur + kart + rondenummer (opwarmen banden) + ruis
+ * (indoorbaan: geen correctie voor weer of baanomstandigheden)
+ * Opgelost met backfitting. Kleine groepen worden naar 0 getrokken (ridge), zodat een kart of coureur
+ * met weinig rondes niet meteen bovenaan of onderaan staat.
+ */
+let modelCache = { key: "", at: 0, data: null };
+function fitModel(opts) {
+  const key = `${opts.since || 0}|${opts.until || 0}|${opts.grp}`;
+  if (modelCache.data && modelCache.key === key && Date.now() - modelCache.at < 60000) return modelCache.data;
+  const rows = loadLaps(opts).filter((r) => r.flag === "clean" && r.lap_no >= 2 && r.driver && r.kart);
+  const n = rows.length;
+  const empty = { n: 0, mean: 0, sigma: 0, r2: 0, karts: new Map(), drivers: new Map() };
+  if (n < 30) return (modelCache = { key, at: Date.now(), data: empty }).data;
+  const lapKey = (l) => String(Math.min(l, 15));
+  const F = [
+    { name: "driver", key: (r) => r.driver, lambda: 3, center: false },
+    { name: "kart", key: (r) => r.kart, lambda: 8, center: true },
+    { name: "lap", key: (r) => lapKey(r.lap_no), lambda: 20, center: true },
+  ];
+  const y = rows.map((r) => r.lap_ms);
+  const mu = y.reduce((a, b) => a + b, 0) / n;
+  const idx = F.map((f) => rows.map(f.key));
+  const eff = F.map(() => new Map());
+  const pred = (i) => mu + F.reduce((s, f, j) => s + (eff[j].get(idx[j][i]) || 0), 0);
+  for (let it = 0; it < 40; it++) {
+    let change = 0;
+    F.forEach((f, j) => {
+      const sum = new Map(), cnt = new Map();
+      for (let i = 0; i < n; i++) {
+        const k = idx[j][i];
+        const r = y[i] - pred(i) + (eff[j].get(k) || 0);
+        sum.set(k, (sum.get(k) || 0) + r);
+        cnt.set(k, (cnt.get(k) || 0) + 1);
+      }
+      const next = new Map([...sum].map(([k, v]) => [k, v / (cnt.get(k) + f.lambda)]));
+      if (f.center) {
+        // gewogen centreren: het gemiddelde effect is 0 (een 'gemiddelde kart', 'gemiddelde heat')
+        let tot = 0;
+        for (const [k, v] of next) tot += v * cnt.get(k);
+        const c = tot / n;
+        for (const [k, v] of next) next.set(k, v - c);
+      }
+      for (const [k, v] of next) change = Math.max(change, Math.abs(v - (eff[j].get(k) || 0)));
+      eff[j] = next;
+      f.cnt = cnt;
+    });
+    if (change < 0.5) break; // < 0,5 ms verschil: klaar
+  }
+  let sse = 0, sst = 0;
+  for (let i = 0; i < n; i++) {
+    sse += (y[i] - pred(i)) ** 2;
+    sst += (y[i] - mu) ** 2;
+  }
+  const sigma = Math.sqrt(sse / Math.max(1, n - 1));
+  const out = (j) =>
+    new Map([...eff[j]].map(([k, v]) => [k, { effect: v, se: sigma / Math.sqrt(F[j].cnt.get(k) + F[j].lambda), n: F[j].cnt.get(k) }]));
+  const lapEff = Object.fromEntries([...eff[2]].map(([k, v]) => [k, Math.round(v)]));
+  const data = { n, mean: mu, sigma, r2: sst ? 1 - sse / sst : 0, karts: out(1), drivers: out(0), laps: lapEff };
+  modelCache = { key, at: Date.now(), data };
+  return data;
+}
+
+function modelSummary(opts) {
+  const m = fitModel(opts);
+  const rnd = (x) => Math.round(x);
+  return {
+    laps: m.n,
+    sigmaMs: rnd(m.sigma),
+    r2: Math.round(m.r2 * 1000) / 1000,
+    meanMs: rnd(m.mean),
+    lapEffectMs: m.laps,
+    karts: [...m.karts].map(([kart, e]) => ({ kart, effectMs: rnd(e.effect), seMs: rnd(e.se), laps: e.n })).sort((a, b) => a.effectMs - b.effectMs),
+    drivers: [...m.drivers]
+      .map(([driver, e]) => ({ driver, ratingMs: rnd(m.mean + e.effect), seMs: rnd(e.se), laps: e.n }))
+      .sort((a, b) => a.ratingMs - b.ratingMs),
+  };
+}
+
 function kartStats(opts) {
   const rows = loadLaps(opts);
   const clean = rows.filter((r) => r.flag === "clean");
   const overallMed = median(clean.map((r) => r.lap_ms)) || 0;
+  const model = fitModel(opts);
 
   // coureur-niveau (op basis van heat-relatieve tijden), om kart-effect los van rijvaardigheid te schatten
   const drv = new Map();
@@ -365,7 +446,8 @@ function kartStats(opts) {
     std: std(k.clean),
     // positief = langzamer dan gemiddeld, in ms per ronde
     heatIndexMs: k.rel.length ? median(k.rel) * overallMed : null,
-    driverCorrectedMs: k.corr.length >= 5 ? median(k.corr) * overallMed : null,
+    driverCorrectedMs: model.karts.has(k.kart) ? Math.round(model.karts.get(k.kart).effect) : null,
+    seMs: model.karts.has(k.kart) ? Math.round(model.karts.get(k.kart).se) : null,
     corrSamples: k.corr.length,
     lastUsed: k.last,
     flags: k.flags,
@@ -408,9 +490,20 @@ function driverStats(opts) {
     d.last = Math.max(d.last, r.ts);
     if (r.flag === "clean") d.clean.push(r.lap_ms);
   }
+  const model = fitModel(opts);
   return [...m.values()]
-    .map((d) => ({ key: nameKey(d.driver), driver: d.driver, laps: d.laps, heats: d.heats.size, karts: d.karts.size, best: d.clean.length ? Math.min(...d.clean) : null, median: median(d.clean), std: std(d.clean), last: d.last }))
-    .sort((a, b) => (a.best ?? 1e9) - (b.best ?? 1e9));
+    .map((d) => {
+      const e = model.drivers.get(d.driver);
+      return {
+        key: nameKey(d.driver), driver: d.driver, laps: d.laps, heats: d.heats.size, karts: d.karts.size,
+        best: d.clean.length ? Math.min(...d.clean) : null, median: median(d.clean), std: std(d.clean), last: d.last,
+        // regressie: verwachte rondetijd in een gemiddelde kart, op een warme ronde
+        rating: e ? Math.round(model.mean + e.effect) : null,
+        ratingSe: e ? Math.round(e.se) : null,
+      };
+    })
+    // ranglijst op basis van de regressie; coureurs zonder schone rondes achteraan
+    .sort((a, b) => (a.rating ?? 1e9) - (b.rating ?? 1e9) || (a.best ?? 1e9) - (b.best ?? 1e9));
 }
 
 function driverDetail(name, opts) {
@@ -682,6 +775,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/people") return send(res, 200, peopleMap());
     if (p === "/api/numbers") return send(res, 200, driverNumbers());
     if (p === "/api/karts") return send(res, 200, kartStats(opts));
+    if (p === "/api/model") return send(res, 200, modelSummary(opts));
     if (p.startsWith("/api/kart/")) return send(res, 200, kartDetail(decodeURIComponent(p.slice(10)), opts));
     if (p === "/api/drivers") return send(res, 200, driverStats(opts));
     if (p.startsWith("/api/driver/")) return send(res, 200, driverDetail(decodeURIComponent(p.slice(12)), opts));

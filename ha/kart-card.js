@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.5.0";
+const KART_CARD_VERSION = "3.6.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -519,7 +519,7 @@ this._pumpPhotos();
 _kaTop(name) {
 const d = this._ka.drivers && this._ka.drivers.data;
 if (!Array.isArray(d) || !name) return null;
-const list = d.filter((x) => x.best > 0).sort((a, b) => a.best - b.best);
+const list = d.filter((x) => x.best > 0).sort((a, b) => (a.rating ?? 1e9) - (b.rating ?? 1e9) || a.best - b.best);
 const i = list.findIndex((x) => sameName(x.driver, name) || sameName(x.driver, liveName(name)));
 if (i < 0) return null;
 const pct = Math.max(1, Math.ceil(((i + 1) / list.length) * 100));
@@ -1055,19 +1055,25 @@ if ((me.position || 99) < (them.position || 99)) ahead++;
 }
 return { f, name: f.name, pid: f.personId || this._pidFor(f.name), best, live: this._liveDrivers().find((d) => this._matches(f, d.N, "")), pos: best && best.pos, shared, ahead };
 }),
-].sort((x, y) => (x.best ? x.best.ms : 1e12) - (y.best ? y.best.ms : 1e12));
-const lead = rows[0] && rows[0].best ? rows[0].best.ms : 0;
+].map((r) => ({ ...r, rating: (this._kaDriver(r.name) || {}).rating || 0 }))
+// ranglijst op regressie (verwachte rondetijd in een gemiddelde kart); wie nog niet gelogd is, daarna op beste ronde
+.sort((x, y) => (x.rating && y.rating ? x.rating - y.rating : x.rating ? -1 : y.rating ? 1 : (x.best ? x.best.ms : 1e12) - (y.best ? y.best.ms : 1e12)));
+const score = (r) => r.rating || (r.best ? r.best.ms : 0);
+const myRow = rows.find((r) => r.me);
+const lead = rows[0] ? score(rows[0]) : 0;
 const PCOL = ["#FF8000", "#27F4D2", "#3671C6", "#229971", "#64C4FF", "#52E252", "#0093CC", "#B6BABD", "#F596C8", "#FFD12E"];
 let fi = 0;
 const html = rows
 .map((r, i) => {
-const ms = r.best ? r.best.ms : 0;
+const ms = score(r);
 const t = this._kaTop(r.name);
 const col = r.me ? "#E10600" : PCOL[fi++ % PCOL.length];
-const vsMe = r.me || !ms || !myBest ? "" : `<span class="${ms < myBest ? "pc-red" : "pc-green"}">${fmtDelta(ms - myBest)}</span>`;
+const mine = myRow && (r.rating && myRow.rating ? myRow.rating : myRow.best ? myRow.best.ms : 0);
+const theirs = r.rating && myRow && myRow.rating ? r.rating : r.best ? r.best.ms : 0;
+const vsMe = r.me || !theirs || !mine ? "" : `<span class="${theirs < mine ? "pc-red" : "pc-green"}">${fmtDelta(theirs - mine)}</span>`;
 const img = this._av(r.pid, "pc-img", 200);
 const parts = String(r.name).trim().split(/\s+/);
-const meta = [r.pos ? `P${esc(r.pos)} ooit` : "", t ? `top ${t.pct}%` : "", !r.me && r.shared ? `${r.ahead}–${r.shared - r.ahead} onderling` : ""].filter(Boolean).join(" · ");
+const meta = [r.rating && r.best ? `beste ${fmtLap(r.best.ms)}` : "", r.pos ? `P${esc(r.pos)} ooit` : "", t ? `top ${t.pct}%` : "", !r.me && r.shared ? `${r.ahead}–${r.shared - r.ahead} onderling` : ""].filter(Boolean).join(" · ");
 return `<div class="pcard ${r.me ? "me" : ""} ${r.live ? "islive" : ""}" style="--c:${col}">
 <div class="pc-pos">${ms ? i + 1 : "–"}</div>
 ${this._dno(r.name) ? `<div class="pc-no">${this._dno(r.name)}</div>` : ""}
@@ -1076,14 +1082,14 @@ ${r.live ? `<span class="pc-live">LIVE P${esc(r.live.P)}</span>` : ""}
 <div class="pc-photo">${img || `<div class="pc-ph">${esc(tla(r.name))}</div>`}</div>
 <div class="pc-foot">
 <div class="pc-name">${esc(parts[0] || "")} <b>${esc(parts.slice(1).join(" "))}</b></div>
-<div class="pc-time"><span class="${i === 0 && ms ? "pc-purple" : ""}">${ms ? fmtLap(ms) : pending ? "zoeken…" : "geen tijd"}</span>${vsMe}</div>
+<div class="pc-time"><span class="${i === 0 && ms ? "pc-purple" : ""}" title="${r.rating ? "Regressie: verwachte rondetijd in een gemiddelde kart" : "Beste ronde (nog niet genoeg gelogd voor regressie)"}">${ms ? fmtLap(ms) : pending ? "zoeken…" : "geen tijd"}${r.rating ? `<small class="pc-r">R</small>` : ""}</span>${vsMe}</div>
 ${meta ? `<div class="pc-meta">${meta}</div>` : ""}
 </div>
 </div>`;
 })
 .join("");
 const hint = this._follows.length ? "" : `<div class="muted small" style="margin-top:6px">Tik op ☆ naast een naam in Live, Heats of Klassement om coureurs aan deze ranglijst toe te voegen.</div>`;
-return `<div class="section-h"><span>Mijn ranglijst</span><span class="muted small">jij + ${this._follows.length} gevolgd · op beste ronde${lead ? ` · P1 ${fmtLap(lead)}` : ""}</span></div>
+return `<div class="section-h"><span>Mijn ranglijst</span><span class="muted small">jij + ${this._follows.length} gevolgd · op regressie (R = verwachte rondetijd in een gemiddelde kart)</span></div>
 <div class="pgrid">${html}</div>${hint}`;
 }
 _renderLive() {
@@ -1305,9 +1311,9 @@ _renderOwnRanking() {
 const c = this._ka[this._ownRankKey()];
 if (!c || (!c.data && !c.error)) return `<div class="empty">Klassement laden…</div>`;
 if (!c.data) return `<div class="error">${esc(c.error)}</div>${this._kaHelp()}`;
-const rows = c.data.filter((r) => r.best);
+const rows = c.data.filter((r) => r.best).sort((a, b) => (a.rating ?? 1e9) - (b.rating ?? 1e9) || a.best - b.best);
 if (!rows.length) return `<div class="empty">In deze periode nog geen rondes gelogd.</div>`;
-const lead = rows[0].best;
+const lead = rows[0].rating || rows[0].best;
 const myName = this._myLiveName();
 const html = rows
 .map((r, i) => {
@@ -1317,15 +1323,16 @@ const pc = i < 3 ? ` p${i + 1}` : "";
 return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
 <div class="tpos${pc}">${i + 1}</div>
 <div class="tname">${this._av(this._pidFor(r.driver))}${this._dno(r.driver)}${esc(r.driver)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">top ${Math.max(1, Math.ceil(((i + 1) / rows.length) * 100))}% · ${r.heats} heat${r.heats === 1 ? "" : "s"} · ${r.laps} rondes · ${fmtAgo(r.last)}</div></div>
-<div class="tt ${i === 0 ? "purple" : ""}">${fmtLap(r.best)}</div>
-<div class="tg">${i === 0 ? "" : fmtDelta(r.best - lead)}</div>
+<div class="tt ${i === 0 ? "purple" : ""}" title="Regressie: verwachte rondetijd in een gemiddelde kart${r.ratingSe ? ` (± ${(r.ratingSe / 1000).toFixed(3)} s)` : ""}">${fmtLap(r.rating || r.best)}</div>
+<div class="tg">${i === 0 ? "" : fmtDelta((r.rating || r.best) - lead)}</div>
+<div class="tt muted" title="snelste losse ronde">${fmtLap(r.best)}</div>
 <div class="tf">${me ? "" : this._followBtn(r.driver, "")}</div>
 </div>`;
 })
 .join("");
 const sum = this._ka.summary && this._ka.summary.data;
-return `<div class="tower">${html}</div>
-<div class="toolbar"><span class="muted small">Alle ${rows.length} coureurs die de logger zag${sum && sum.totals.first ? ` (sinds ${fmtDate(new Date(sum.totals.first).toISOString(), false)})` : ""} · alleen schone rondes</span><button class="btn small" data-action="refresh-ranking">Vernieuwen</button></div>`;
+return `<div class="tower"><div class="trow head"><div class="tpos">P</div><div class="tname">Coureur</div><div class="tt">Regressie</div><div class="tg">Interval</div><div class="tt">Beste</div><div class="tf"></div></div>${html}</div>
+<div class="toolbar"><span class="muted small">Alle ${rows.length} coureurs die de logger zag${sum && sum.totals.first ? ` (sinds ${fmtDate(new Date(sum.totals.first).toISOString(), false)})` : ""} · gerangschikt op regressie: verwachte rondetijd in een gemiddelde kart, gecorrigeerd voor kart en opwarmrondes</span><button class="btn small" data-action="refresh-ranking">Vernieuwen</button></div>`;
 }
 _kaHelp() {
 return `<div class="muted small">Draait de Kart Analytics-server op ${esc(this._kaBase())}? Bekijk je Home Assistant via https, voeg dan <b>rest_command.kart_analytics</b> toe (zie uitleg).</div>`;
@@ -1384,7 +1391,7 @@ const all = ranked.length
 return `${status}
 <div class="section-h"><span>Welke kart kies ik?</span><button class="link" data-action="refresh-ka">Vernieuwen</button></div>
 ${kartHtml}
-<div class="muted small" style="margin-top:6px">Kart-effect = seconden per ronde sneller (−) of langzamer (+) dan een gemiddelde kart, gecorrigeerd voor de coureur en de omstandigheden in de heat.</div>
+<div class="muted small" style="margin-top:6px">Kart-effect = seconden per ronde sneller (−) of langzamer (+) dan een gemiddelde kart, berekend met regressie: gecorrigeerd voor wie erin reed en voor opwarmrondes.</div>
 <div class="section-h"><span>Jij</span></div>
 ${meHtml}
 ${ranked.length > 8 ? `<div class="section-h"><span>Alle karts</span></div>${all}` : ""}
@@ -1593,6 +1600,7 @@ text-transform:uppercase; letter-spacing:.5px; padding:5px 12px; cursor:pointer;
 .pc-name b { font-weight:900; text-transform:uppercase; font-style:italic; }
 .pc-time { display:flex; justify-content:space-between; align-items:baseline; gap:6px; margin-top:3px; font-weight:900; font-style:italic; font-size:1.15em; font-variant-numeric:tabular-nums; color:#fff; }
 .pc-time .pc-red, .pc-time .pc-green { font-size:.72em; }
+.pc-r { font-size:.5em; margin-left:4px; padding:0 4px; background:rgba(255,255,255,.85); color:#111; vertical-align:middle; font-style:normal; }
 .pc-red { color:#ff8a84; } .pc-green { color:#5dff9f; } .pc-purple { color:#e3c2ff; text-shadow:0 0 10px rgba(166,77,255,.8); }
 .pc-meta { color:rgba(255,255,255,.75); font-size:.68em; font-style:italic; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 @media (max-width: 520px) { .pgrid { grid-template-columns:repeat(2, 1fr); } .pc-pos { font-size:2.8em; } }
