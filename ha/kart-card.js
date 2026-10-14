@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.6.0";
+const KART_CARD_VERSION = "3.6.1";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -1311,9 +1311,9 @@ _renderOwnRanking() {
 const c = this._ka[this._ownRankKey()];
 if (!c || (!c.data && !c.error)) return `<div class="empty">Klassement laden…</div>`;
 if (!c.data) return `<div class="error">${esc(c.error)}</div>${this._kaHelp()}`;
-const rows = c.data.filter((r) => r.best).sort((a, b) => (a.rating ?? 1e9) - (b.rating ?? 1e9) || a.best - b.best);
+const rows = c.data.filter((r) => r.best).sort((a, b) => a.best - b.best);
 if (!rows.length) return `<div class="empty">In deze periode nog geen rondes gelogd.</div>`;
-const lead = rows[0].rating || rows[0].best;
+const lead = rows[0].best;
 const myName = this._myLiveName();
 const html = rows
 .map((r, i) => {
@@ -1323,16 +1323,16 @@ const pc = i < 3 ? ` p${i + 1}` : "";
 return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
 <div class="tpos${pc}">${i + 1}</div>
 <div class="tname">${this._av(this._pidFor(r.driver))}${this._dno(r.driver)}${esc(r.driver)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">top ${Math.max(1, Math.ceil(((i + 1) / rows.length) * 100))}% · ${r.heats} heat${r.heats === 1 ? "" : "s"} · ${r.laps} rondes · ${fmtAgo(r.last)}</div></div>
-<div class="tt ${i === 0 ? "purple" : ""}" title="Regressie: verwachte rondetijd in een gemiddelde kart${r.ratingSe ? ` (± ${(r.ratingSe / 1000).toFixed(3)} s)` : ""}">${fmtLap(r.rating || r.best)}</div>
-<div class="tg">${i === 0 ? "" : fmtDelta((r.rating || r.best) - lead)}</div>
-<div class="tt muted" title="snelste losse ronde">${fmtLap(r.best)}</div>
+<div class="tt ${i === 0 ? "purple" : ""}" title="snelste ronde">${fmtLap(r.best)}</div>
+<div class="tg">${i === 0 ? "" : fmtDelta(r.best - lead)}</div>
+<div class="tt muted" title="Regressie: verwachte rondetijd in een gemiddelde kart${r.ratingSe ? ` (± ${(r.ratingSe / 1000).toFixed(3)} s)` : ""}">${r.rating ? fmtLap(r.rating) : "–"}</div>
 <div class="tf">${me ? "" : this._followBtn(r.driver, "")}</div>
 </div>`;
 })
 .join("");
 const sum = this._ka.summary && this._ka.summary.data;
-return `<div class="tower"><div class="trow head"><div class="tpos">P</div><div class="tname">Coureur</div><div class="tt">Regressie</div><div class="tg">Interval</div><div class="tt">Beste</div><div class="tf"></div></div>${html}</div>
-<div class="toolbar"><span class="muted small">Alle ${rows.length} coureurs die de logger zag${sum && sum.totals.first ? ` (sinds ${fmtDate(new Date(sum.totals.first).toISOString(), false)})` : ""} · gerangschikt op regressie: verwachte rondetijd in een gemiddelde kart, gecorrigeerd voor kart en opwarmrondes</span><button class="btn small" data-action="refresh-ranking">Vernieuwen</button></div>`;
+return `<div class="tower"><div class="trow head"><div class="tpos">P</div><div class="tname">Coureur</div><div class="tt">Snelste</div><div class="tg">Interval</div><div class="tt">Regressie</div><div class="tf"></div></div>${html}</div>
+<div class="toolbar"><span class="muted small">Alle ${rows.length} coureurs die de logger zag${sum && sum.totals.first ? ` (sinds ${fmtDate(new Date(sum.totals.first).toISOString(), false)})` : ""} · gesorteerd op snelste ronde · grijs = regressie (verwachte rondetijd in een gemiddelde kart)</span><button class="btn small" data-action="refresh-ranking">Vernieuwen</button></div>`;
 }
 _kaHelp() {
 return `<div class="muted small">Draait de Kart Analytics-server op ${esc(this._kaBase())}? Bekijk je Home Assistant via https, voeg dan <b>rest_command.kart_analytics</b> toe (zie uitleg).</div>`;
