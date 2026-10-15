@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.6.2";
+const KART_CARD_VERSION = "3.7.0";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -26,8 +26,10 @@ for (const c of String(k)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
 return TEAM_COLORS[h % TEAM_COLORS.length];
 }
 function tla(name) {
-const w = String(name || "").trim().split(/\s+/)[0] || "";
-return w.replace(/[^A-Za-zÀ-ÿ]/g, "").slice(0, 3).toUpperCase() || "---";
+const ws = String(name || "").trim().split(/\s+/).map((w) => w.replace(/[^A-Za-zÀ-ÿ]/g, "")).filter(Boolean);
+// "D. Gerding" → GER (voornaam is alleen een voorletter)
+const w = ws.length > 1 && ws[0].length <= 2 ? ws[ws.length - 1] : ws[0] || "";
+return w.slice(0, 3).toUpperCase() || "---";
 }
 // Alleen wijzigingen doorvoeren in plaats van alles opnieuw opbouwen (geen flikkerende foto's/animaties)
 function morphNode(x, y) {
@@ -253,7 +255,7 @@ if (!L || !Array.isArray(L.D) || !L.D.length || !this._archive) return;
 const day = new Date().toISOString().slice(0, 10);
 let changed = false;
 for (const d of L.D) {
-const isMe = sameName(d.N, this._myLiveName());
+const isMe = this._isMe(d.N);
 const f = isMe ? null : this._followOfLive(d.N);
 if (!isMe && !f) continue;
 const key = isMe ? "me" : this._knownKey(f);
@@ -423,11 +425,19 @@ this._kaGet(this._ownRankKey(), `drivers?group=${encodeURIComponent(g)}&since=${
 _kaDriver(name) {
 const d = this._ka.drivers && this._ka.drivers.data;
 if (!Array.isArray(d) || !name) return null;
+if (this._isMe(name)) {
+// alle namen waaronder jij in de logger staat samenvoegen
+const mine = d.filter((x) => this._isMe(x.driver));
+if (!mine.length) return null;
+const main = mine.reduce((a, b) => (b.laps > a.laps ? b : a));
+const bests = mine.map((x) => x.best).filter((x) => x > 0);
+return { ...main, best: bests.length ? Math.min(...bests) : null, laps: mine.reduce((t, x) => t + x.laps, 0), heats: mine.reduce((t, x) => t + x.heats, 0), last: Math.max(...mine.map((x) => x.last || 0)) };
+}
 return d.find((x) => sameName(x.driver, name) || sameName(x.driver, liveName(name))) || null;
 }
 _pidFor(name) {
 if (!name) return "";
-if (sameName(name, this._myLiveName())) return String(this._config.person_id || "");
+if (this._isMe(name)) return String(this._config.person_id || "");
 const f = this._follows.find((x) => x.personId && (sameName(name, x.name) || sameName(name, liveName(x.name)) || sameName(liveName(name), liveName(x.name))));
 if (f) return String(f.personId);
 const m = (this._pidMap = this._pidMap || {});
@@ -444,7 +454,8 @@ return m[key] || "";
 _num(name) {
 const m = this._ka.numbers && this._ka.numbers.data;
 if (!m || !name) return null;
-const e = m[liveName(name).toLowerCase()];
+const keys = this._isMe(name) ? this._myNames().map((n) => liveName(n).toLowerCase()) : [liveName(name).toLowerCase()];
+const e = keys.map((k) => m[k]).find(Boolean);
 if (!e) return null;
 return e.sms ? { n: e.sms, src: "sms" } : e.log ? { n: e.log, src: "log" } : null;
 }
@@ -520,7 +531,7 @@ _kaTop(name) {
 const d = this._ka.drivers && this._ka.drivers.data;
 if (!Array.isArray(d) || !name) return null;
 const list = d.filter((x) => x.best > 0).sort((a, b) => (a.rating ?? 1e9) - (b.rating ?? 1e9) || a.best - b.best);
-const i = list.findIndex((x) => sameName(x.driver, name) || sameName(x.driver, liveName(name)));
+const i = this._isMe(name) ? list.findIndex((x) => this._isMe(x.driver)) : list.findIndex((x) => sameName(x.driver, name) || sameName(x.driver, liveName(name)));
 if (i < 0) return null;
 const pct = Math.max(1, Math.ceil(((i + 1) / list.length) * 100));
 return { rank: i + 1, total: list.length, pct };
@@ -634,6 +645,13 @@ return L && Array.isArray(L.D) ? [...L.D].sort((a, b) => (a.P || 99) - (b.P || 9
 }
 _myLiveName() {
 return this._config.driver_name || "";
+}
+_myNames() {
+const a = this._config.driver_aliases;
+return [this._config.driver_name, ...(Array.isArray(a) ? a : a ? [a] : [])].filter(Boolean);
+}
+_isMe(name) {
+return !!name && this._myNames().some((n) => sameName(name, n));
 }
 _followOfLive(n) {
 return this._follows.find((f) => sameName(n, liveName(f.name)) || sameName(n, f.name));
@@ -995,7 +1013,7 @@ this._kaKartTile(tile),
 this._kaTopTile(tile),
 ].join("");
 const meName = this._myLiveName() || "Jij";
-const meLive = this._liveDrivers().find((d) => sameName(d.N, this._myLiveName()));
+const meLive = this._liveDrivers().find((d) => this._isMe(d.N));
 const myKart = meLive ? meLive.K : "";
 const top = this._kaTop(this._myLiveName());
 const prMs = [myBestMs, this._myBestMs()].filter((x) => x > 0).reduce((a, b) => Math.min(a, b), Infinity);
@@ -1019,8 +1037,8 @@ if (this._wsState !== "open" || !drivers.length) {
 const txt = this._wsState === "open" ? "Geen heat bezig" : this._wsState === "connecting" ? "Verbinden met live timing…" : "Live timing niet bereikbaar";
 return `<div class="strip"><span class="dot ${this._wsState === "open" ? "ok" : "bad"}"></span>${txt}</div>`;
 }
-const me = drivers.find((d) => sameName(d.N, this._myLiveName()));
-const fols = drivers.filter((d) => !sameName(d.N, this._myLiveName()) && this._followOfLive(d.N));
+const me = drivers.find((d) => this._isMe(d.N));
+const fols = drivers.filter((d) => !this._isMe(d.N) && this._followOfLive(d.N));
 const lead = drivers[0];
 const who = (d, label) => (d ? `<span class="who"><b>P${esc(d.P)}</b> ${label} · ${fmtLap(d.B)}</span>` : "");
 return `<div class="strip on" data-action="goto" data-tab="live">
@@ -1105,7 +1123,7 @@ const bests = drivers.map((d) => Number(d.B)).filter((n) => n > 0);
 const fastest = bests.length ? Math.min(...bests) : 0;
 const rows = drivers
 .map((d) => {
-const me = sameName(d.N, this._myLiveName());
+const me = this._isMe(d.N);
 const fol = !me && !!this._followOfLive(d.N);
 const last = Number(d.T);
 const best = Number(d.B);
@@ -1317,7 +1335,7 @@ const lead = rows[0].best;
 const myName = this._myLiveName();
 const html = rows
 .map((r, i) => {
-const me = sameName(r.driver, myName);
+const me = this._isMe(r.driver);
 const fol = !me && this._isFollowed(r.driver, "");
 const pc = i < 3 ? ` p${i + 1}` : "";
 return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
