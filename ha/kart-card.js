@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.7.0";
+const KART_CARD_VERSION = "3.7.1";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -1091,7 +1091,7 @@ const theirs = r.best ? r.best.ms : 0;
 const vsMe = r.me || !theirs || !mine ? "" : `<span class="${theirs < mine ? "pc-red" : "pc-green"}">${fmtDelta(theirs - mine)}</span>`;
 const img = this._av(r.pid, "pc-img", 200);
 const parts = String(r.name).trim().split(/\s+/);
-const meta = [r.rating ? `regressie ${fmtLap(r.rating)}` : "", r.pos ? `P${esc(r.pos)} ooit` : "", t ? `top ${t.pct}%` : "", !r.me && r.shared ? `${r.ahead}–${r.shared - r.ahead} onderling` : ""].filter(Boolean).join(" · ");
+const meta = [r.pos ? `P${esc(r.pos)} ooit` : "", t ? `top ${t.pct}%` : "", !r.me && r.shared ? `${r.ahead}–${r.shared - r.ahead} onderling` : ""].filter(Boolean).join(" · ");
 return `<div class="pcard ${r.me ? "me" : ""} ${r.live ? "islive" : ""}" style="--c:${col}">
 <div class="pc-pos">${ms ? i + 1 : "–"}</div>
 ${this._dno(r.name) ? `<div class="pc-no">${this._dno(r.name)}</div>` : ""}
