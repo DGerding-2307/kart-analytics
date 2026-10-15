@@ -265,7 +265,7 @@ function histogram(values, opts = {}) {
 }
 const median = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const FLAGC = { clean: "#00D26A", slow: "#FFD12E", yellow: "#FF8A00", out: "#666680" };
-const FLAGN = { clean: "schoon", slow: "langzaam (spin/botsing?)", yellow: "gele vlag / neutralisatie", out: "uitrijronde" };
+const FLAGN = { clean: "schoon", slow: "langzaam (spin/botsing of > 40,0 s)", yellow: "gele vlag / neutralisatie", out: "uitrijronde" };
 const flagLegend = () => `<div class="legend">${Object.keys(FLAGC).map((k) => `<span><i style="background:${FLAGC[k]}"></i>${FLAGN[k]}</span>`).join("")}</div>`;
 const PALETTE = ["#E10600", "#3B82F6", "#00D26A", "#FFD12E", "#A855F7", "#FF8A00", "#22D3EE", "#F472B6", "#94A3B8", "#84CC16", "#FB7185", "#FDE68A"];
 
@@ -552,7 +552,7 @@ async function vConditions() {
 function vAbout() {
   return `<div class="card"><h2>Hoe werkt het?</h2><div class="hint" style="font-size:15px;max-width:820px">
   <p><b>Logger.</b> De server luistert dag en nacht naar de openbare live timing van Kart en Fun Fabriek en slaat elke voltooide ronde op: tijd, coureur, kart, rondenummer en positie. Hiervoor zijn geen inloggegevens nodig. Valt de verbinding weg, dan maakt hij vanzelf opnieuw verbinding.</p>
-  <p><b>Schone rondes.</b> Niet elke ronde zegt iets over de kart. Daarom wordt elke ronde gemarkeerd: <span style="color:${FLAGC.out}">uitrijronde</span> (ronde 1), <span style="color:${FLAGC.yellow}">gele vlag</span> (meer dan de helft van het veld rijdt tegelijk &gt;15% langzamer), <span style="color:${FLAGC.slow}">langzaam</span> (&gt;12% boven het eigen niveau in die heat — spin of botsing) en <span style="color:${FLAGC.clean}">schoon</span>. Statistieken gebruiken alleen schone rondes.</p>
+  <p><b>Schone rondes.</b> Niet elke ronde zegt iets over de kart. Daarom wordt elke ronde gemarkeerd: <span style="color:${FLAGC.out}">uitrijronde</span> (ronde 1), <span style="color:${FLAGC.yellow}">gele vlag</span> (meer dan de helft van het veld rijdt tegelijk &gt;15% langzamer), <span style="color:${FLAGC.slow}">langzaam</span> (&gt;12% boven het eigen niveau in die heat — spin of botsing — of langzamer dan 40,0 s) en <span style="color:${FLAGC.clean}">schoon</span>. Statistieken gebruiken alleen schone rondes.</p>
   <p><b>Regressie.</b> Elke schone ronde wordt verklaard als: <i>gemiddelde + niveau van de coureur + effect van de kart + effect van het rondenummer (banden opwarmen)</i>. Het model schat al die effecten tegelijk. Daardoor kun je karts eerlijk vergelijken (los van wie erin reed) en coureurs eerlijk vergelijken (los van welke kart ze kregen). Weer en baanomstandigheden tellen niet mee: het is een indoorbaan.</p>
   <p><b>Rating</b> = de verwachte rondetijd van een coureur in een gemiddelde kart, op een warme ronde. De coureursranglijst is daarop gesorteerd. <b>Kart-effect</b> = hoeveel seconden per ronde een kart sneller (−) of langzamer (+) is dan gemiddeld. Met weinig rondes trekt het model een waarde naar het gemiddelde, zodat één toevallig goede heat niet meteen bovenaan staat. Reken op een paar weken data voor betrouwbare cijfers.</p>
   <p><b>Beperking.</b> De live timing stuurt alleen de laatste rondetijd. Als de server precies tijdens een ronde offline is, mist die ronde — de rest van de heat wordt gewoon opgeslagen.</p>

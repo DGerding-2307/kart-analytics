@@ -20,6 +20,8 @@ const CFG = {
   dbPath: process.env.DB_PATH || "/data/kart.db",
   publicDir: process.env.PUBLIC_DIR || path.join(__dirname, "public"),
   watchdogMs: Number(process.env.WATCHDOG_MS || 90000),
+  // rondes langzamer dan dit tellen nooit als schone ronde (volwassenen)
+  cleanMaxMs: Number(process.env.CLEAN_MAX_MS || 40000),
   // Optioneel: persoonlijke app-sleutels voor profielfoto's. Alleen via omgevingsvariabelen, nooit in de code.
   smsAccessToken: process.env.SMS_ACCESS_TOKEN || "",
   smsDeviceToken: process.env.SMS_DEVICE_TOKEN || "",
@@ -27,7 +29,7 @@ const CFG = {
   smsApi: process.env.SMS_API || "https://mobile-api7.sms-timing.com/api",
   smsClient: process.env.SMS_CLIENT || "kartenfunfabriek",
 };
-const VERSION = "1.6.0";
+const VERSION = "1.6.1";
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -310,6 +312,8 @@ function loadLaps({ since = 0, until = 0, grp = "Volwassenen" } = {}) {
       const win = laps.filter((x) => Math.abs(x.ts - l.ts) <= 25000 && x.rel);
       const slowShare = win.length ? win.filter((x) => x.rel > 1.15).length / win.length : 0;
       l.flag = l.lap_no <= 1 ? "out" : win.length >= 3 && slowShare > 0.5 ? "yellow" : l.rel && l.rel > 1.12 ? "slow" : "clean";
+      // vaste grens: boven 40,0 s is geen schone ronde (niet bij kids)
+      if (l.flag === "clean" && l.grp !== "Kids" && l.lap_ms > CFG.cleanMaxMs) l.flag = "slow";
     }
     const clean = laps.filter((l) => l.flag === "clean").map((l) => l.lap_ms);
     const hmed = median(clean);
