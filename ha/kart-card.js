@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.6.1";
+const KART_CARD_VERSION = "3.6.2";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -1056,9 +1056,9 @@ if ((me.position || 99) < (them.position || 99)) ahead++;
 return { f, name: f.name, pid: f.personId || this._pidFor(f.name), best, live: this._liveDrivers().find((d) => this._matches(f, d.N, "")), pos: best && best.pos, shared, ahead };
 }),
 ].map((r) => ({ ...r, rating: (this._kaDriver(r.name) || {}).rating || 0 }))
-// ranglijst op regressie (verwachte rondetijd in een gemiddelde kart); wie nog niet gelogd is, daarna op beste ronde
-.sort((x, y) => (x.rating && y.rating ? x.rating - y.rating : x.rating ? -1 : y.rating ? 1 : (x.best ? x.best.ms : 1e12) - (y.best ? y.best.ms : 1e12)));
-const score = (r) => r.rating || (r.best ? r.best.ms : 0);
+// ranglijst op beste ronde; regressie staat klein eronder
+.sort((x, y) => (x.best ? x.best.ms : 1e12) - (y.best ? y.best.ms : 1e12));
+const score = (r) => (r.best ? r.best.ms : 0);
 const myRow = rows.find((r) => r.me);
 const lead = rows[0] ? score(rows[0]) : 0;
 const PCOL = ["#FF8000", "#27F4D2", "#3671C6", "#229971", "#64C4FF", "#52E252", "#0093CC", "#B6BABD", "#F596C8", "#FFD12E"];
@@ -1068,12 +1068,12 @@ const html = rows
 const ms = score(r);
 const t = this._kaTop(r.name);
 const col = r.me ? "#E10600" : PCOL[fi++ % PCOL.length];
-const mine = myRow && (r.rating && myRow.rating ? myRow.rating : myRow.best ? myRow.best.ms : 0);
-const theirs = r.rating && myRow && myRow.rating ? r.rating : r.best ? r.best.ms : 0;
+const mine = myRow && myRow.best ? myRow.best.ms : 0;
+const theirs = r.best ? r.best.ms : 0;
 const vsMe = r.me || !theirs || !mine ? "" : `<span class="${theirs < mine ? "pc-red" : "pc-green"}">${fmtDelta(theirs - mine)}</span>`;
 const img = this._av(r.pid, "pc-img", 200);
 const parts = String(r.name).trim().split(/\s+/);
-const meta = [r.rating && r.best ? `beste ${fmtLap(r.best.ms)}` : "", r.pos ? `P${esc(r.pos)} ooit` : "", t ? `top ${t.pct}%` : "", !r.me && r.shared ? `${r.ahead}–${r.shared - r.ahead} onderling` : ""].filter(Boolean).join(" · ");
+const meta = [r.rating ? `regressie ${fmtLap(r.rating)}` : "", r.pos ? `P${esc(r.pos)} ooit` : "", t ? `top ${t.pct}%` : "", !r.me && r.shared ? `${r.ahead}–${r.shared - r.ahead} onderling` : ""].filter(Boolean).join(" · ");
 return `<div class="pcard ${r.me ? "me" : ""} ${r.live ? "islive" : ""}" style="--c:${col}">
 <div class="pc-pos">${ms ? i + 1 : "–"}</div>
 ${this._dno(r.name) ? `<div class="pc-no">${this._dno(r.name)}</div>` : ""}
@@ -1082,14 +1082,14 @@ ${r.live ? `<span class="pc-live">LIVE P${esc(r.live.P)}</span>` : ""}
 <div class="pc-photo">${img || `<div class="pc-ph">${esc(tla(r.name))}</div>`}</div>
 <div class="pc-foot">
 <div class="pc-name">${esc(parts[0] || "")} <b>${esc(parts.slice(1).join(" "))}</b></div>
-<div class="pc-time"><span class="${i === 0 && ms ? "pc-purple" : ""}" title="${r.rating ? "Regressie: verwachte rondetijd in een gemiddelde kart" : "Beste ronde (nog niet genoeg gelogd voor regressie)"}">${ms ? fmtLap(ms) : pending ? "zoeken…" : "geen tijd"}${r.rating ? `<small class="pc-r">R</small>` : ""}</span>${vsMe}</div>
+<div class="pc-time"><span class="${i === 0 && ms ? "pc-purple" : ""}" title="Beste ronde${r.best && r.best.src ? ` (${esc(r.best.src)})` : ""}">${ms ? fmtLap(ms) : pending ? "zoeken…" : "geen tijd"}</span>${vsMe}</div>
 ${meta ? `<div class="pc-meta">${meta}</div>` : ""}
 </div>
 </div>`;
 })
 .join("");
 const hint = this._follows.length ? "" : `<div class="muted small" style="margin-top:6px">Tik op ☆ naast een naam in Live, Heats of Klassement om coureurs aan deze ranglijst toe te voegen.</div>`;
-return `<div class="section-h"><span>Mijn ranglijst</span><span class="muted small">jij + ${this._follows.length} gevolgd · op regressie (R = verwachte rondetijd in een gemiddelde kart)</span></div>
+return `<div class="section-h"><span>Mijn ranglijst</span><span class="muted small">jij + ${this._follows.length} gevolgd · op beste ronde</span></div>
 <div class="pgrid">${html}</div>${hint}`;
 }
 _renderLive() {
