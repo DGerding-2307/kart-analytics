@@ -1,5 +1,4 @@
-const KART_CARD_VERSION = "3.7.2";
-const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
+const KART_CARD_VERSION = "4.0.0";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
 const KNOWN_STORE = "kart-card-known";
@@ -215,6 +214,20 @@ this._known = A.known;
 storeSet(FOLLOW_STORE, this._follows);
 this._saveArchive();
 this._render();
+this._uploadArchive();
+}
+// eerder bewaarde SMS-gegevens één keer naar je eigen server sturen
+async _uploadArchive() {
+const A = this._archive;
+if (!A || A.uploaded || this._kaViaHA()) return;
+if (!Object.keys(A.heats || {}).length && !Object.keys(A.rankings || {}).length) return;
+try {
+const r = await fetch(`${this._kaBase()}/api/import-archive`, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ heats: A.heats, rankings: A.rankings }) });
+if (r.ok) {
+A.uploaded = new Date().toISOString();
+this._saveArchive(500);
+}
+} catch (_) {}
 }
 _saveArchive(delay = 2000) {
 if (!this._archive || !this._hass) return;
@@ -544,65 +557,35 @@ if (this._wantsLive()) this._wsStart();
 else this._wsStop();
 }
 _wsStart() {
-if (this._ws || !this._wantsLive()) return;
-clearTimeout(this._retryTimer);
+// live timing komt van je eigen server (geen directe verbinding met SMS-Timing meer)
+if (this._poll || !this._wantsLive()) return;
 this._wsState = "connecting";
 this._renderLiveish();
-let ws;
+const tick = async () => {
+if (this._pollBusy) return;
+this._pollBusy = true;
 try {
-ws = new WebSocket(LIVE_WS_URL);
-} catch (_) {
-this._wsState = "closed";
-this._wsRetry();
-return;
-}
-this._ws = ws;
-ws.onopen = () => {
-this._retryCount = 0;
-this._wsState = "open";
-ws.send(`START ${LIVE_RESOURCE_KEY}`);
-this._renderLiveish();
-};
-ws.onmessage = (ev) => {
-try {
-this._live = JSON.parse(ev.data);
-this._liveAt = Date.now();
+const r = await this._kaFetch("live");
+this._wsState = r && r.state === "open" ? "open" : "closed";
+if (r && r.snapshot && r.at !== this._liveAt) {
+this._live = r.snapshot;
+this._liveAt = r.at || Date.now();
 this._trackPos();
-} catch (_) {
-return;
-}
 this._recordLive();
-this._renderLiveish();
-};
-ws.onerror = () => {
-try {
-ws.close();
-} catch (_) {}
-};
-ws.onclose = () => {
-if (this._ws !== ws) return;
-this._ws = null;
-this._wsState = "closed";
-this._renderLiveish();
-this._wsRetry();
-};
 }
-_wsRetry() {
-if (!this._wantsLive()) return;
-const n = this._retryCount || 0;
-const delay = Math.min(30000, 2000 * 2 ** n);
-this._retryCount = n + 1;
-this._retryTimer = setTimeout(() => this._wsStart(), delay);
+} catch (_) {
+this._wsState = "closed";
+} finally {
+this._pollBusy = false;
+}
+this._renderLiveish();
+};
+tick();
+this._poll = setInterval(tick, this._kaViaHA() ? 3000 : 1500);
 }
 _wsStop() {
-clearTimeout(this._retryTimer);
-if (this._ws) {
-const ws = this._ws;
-this._ws = null;
-try {
-ws.close();
-} catch (_) {}
-}
+clearInterval(this._poll);
+this._poll = null;
 this._wsState = "idle";
 }
 _renderLiveish() {
@@ -661,7 +644,14 @@ const h = this._heats;
 if (h.promise) return h.promise;
 if (h.data && !force) return Promise.resolve(h.data);
 h.error = null;
-h.promise = this._call("kart_heats")
+h.promise = this._kaFetch(`myheats?names=${encodeURIComponent(this._myNames().join("|"))}&follow=${encodeURIComponent(this._follows.map((f) => f.name).join("|"))}`)
+.then((list) =>
+(Array.isArray(list) ? list : []).map((x) => {
+const me = x.who.find((w) => w.me);
+const main = me || x.who.slice().sort((a, b) => (a.best || 1e12) - (b.best || 1e12))[0] || {};
+return { id: String(x.id), name: x.name, date: new Date(x.ts).toISOString(), bestTimeMs: main.best || 0, bestTime: fmtLap(main.best), finishPosition: main.pos, mine: !!me, who: x.who };
+})
+)
 .then((list) => {
 h.data = Array.isArray(list) ? list : [];
 this._offline = false;
@@ -690,7 +680,17 @@ const c = this._heatCache[id] || (this._heatCache[id] = {});
 if (c.promise) return c.promise;
 if (c.details) return Promise.resolve(c);
 c.error = null;
-c.promise = Promise.all([this._call("kart_heat_details", { session_id: id }), this._call("kart_heat_laps", { session_id: id })])
+c.promise = this._kaFetch(`heatfull/${encodeURIComponent(id)}`)
+.then((h) => {
+const ps = (h && h.participants) || [];
+const details = {
+name: h ? h.name : "",
+date: h && h.ts ? new Date(h.ts).toISOString() : "",
+participants: ps.map((p, i) => ({ id: String(i + 1), personId: p.personId || "", firstName: p.name, name: "", position: p.pos, scoreDefault: p.best || 0, score: fmtLap(p.best), kart: p.kart })),
+};
+const laps = ps.flatMap((p, i) => p.laps.map((l) => ({ participantId: String(i + 1), lapNumber: l.lap, LapTimeMs: l.ms, position: l.pos })));
+return [details, laps];
+})
 .then(([details, laps]) => {
 c.details = details || {};
 c.laps = Array.isArray(laps) ? laps : [];
@@ -723,7 +723,12 @@ const c = this._ranking[key] || (this._ranking[key] = {});
 if (c.promise) return c.promise;
 if (!force && c.at && Date.now() - c.at < 5 * 60 * 1000) return Promise.resolve(c.rows);
 c.error = null;
-c.promise = this._call("kart_ranking", { score_group: group, ...periodRange(period) })
+c.promise = this._kaFetch(`records?group=${group}&period=${period}`)
+.then((r) => {
+if (!r || !Array.isArray(r.rows)) throw new Error("Nog geen SMS-Timing-klassement opgeslagen op je server. Vul een geldige app-sleutel in bij de server (Portainer).");
+c.fetched = r.fetched;
+return r.rows;
+})
 .then((rows) => {
 c.rows = Array.isArray(rows) ? rows : [];
 c.at = Date.now();
@@ -781,6 +786,7 @@ return this._follows.some((f) => this._matches(f, name, personId));
 _addFollow(f) {
 if (this._isFollowed(f.name, f.personId)) return;
 this._follows = [...this._follows, f];
+this._heats = { data: null, error: null, promise: null };
 storeSet(FOLLOW_STORE, this._follows);
 if (this._archive) this._archive.follows = this._follows;
 this._saveArchive(500);
@@ -843,7 +849,7 @@ return { ...best, pos: evPos ? evPos.pos : stored && stored.pos };
 }
 _myBestMs() {
 let best = 0;
-for (const h of this._heats.data || []) {
+for (const h of (this._heats.data || []).filter((x) => x.mine !== false)) {
 const t = Number(h.bestTimeMs);
 if (t > 0 && (!best || t < best)) best = t;
 }
@@ -945,7 +951,7 @@ ${tabs
 .map((t) => `<button class="tab ${t.id === this._tab ? "on" : ""}" data-action="tab" data-tab="${t.id}">${t.name}</button>`)
 .join("")}
 </nav>
-<div class="body">${this._offline ? `<div class="offline">Offline · SMS-Timing niet bereikbaar – opgeslagen gegevens${this._archive && this._archive.saved ? ` (bijgewerkt ${fmtDate(this._archive.saved)})` : ""}</div>` : ""}${body}</div>
+<div class="body">${this._offline ? `<div class="offline">Server niet bereikbaar – opgeslagen gegevens${this._archive && this._archive.saved ? ` (bijgewerkt ${fmtDate(this._archive.saved)})` : ""}</div>` : ""}${body}</div>
 </div>
 </ha-card>`;
 if (html === this._lastHtml) return;
@@ -959,7 +965,7 @@ _renderOverview() {
 const grp = String(this._config.score_group);
 const ever = this._ranking[this._rankKey(grp, "ever")] || {};
 const today = this._ranking[this._rankKey(grp, "today")] || {};
-const heats = this._heats.data;
+const heats = this._heats.data ? this._heats.data.filter((x) => x.mine !== false) : this._heats.data;
 const myPid = String(this._config.person_id || "");
 const record = ever.rows && ever.rows.find((r) => r.position === 1);
 const meEver = ever.rows && myPid ? ever.rows.find((r) => String(r.personId) === myPid) : null;
@@ -1160,23 +1166,26 @@ const h = this._heats;
 if (h.error) return `<div class="error">${esc(h.error)}</div><button class="btn" data-action="refresh-heats">Opnieuw proberen</button>`;
 if (!h.data) return `<div class="empty">Heats laden…</div>`;
 if (!h.data.length) return `<div class="empty">Nog geen heats gevonden.</div>`;
-const bestOverall = Math.min(...h.data.map((x) => Number(x.bestTimeMs)).filter((n) => n > 0));
+const mineOnly = h.data.filter((x) => x.mine !== false);
+const bestOverall = Math.min(...mineOnly.map((x) => Number(x.bestTimeMs)).filter((n) => n > 0));
 const items = h.data
 .map((x) => {
-const pb = Number(x.bestTimeMs) === bestOverall;
+const pb = x.mine !== false && Number(x.bestTimeMs) === bestOverall;
 const p = Number(x.finishPosition) || 0;
+const chips = (x.who || []).map((w) => `<span class="wchip ${w.me ? "me" : ""}">${w.me ? "JIJ" : esc(tla(w.name))}${w.pos ? ` P${esc(w.pos)}` : ""}${w.best ? ` · ${fmtLap(w.best)}` : ""}</span>`).join("");
 return `<button class="heat" data-action="heat" data-id="${esc(x.id)}">
 <div class="pbadge p${p && p <= 3 ? p : 0}">P${esc(x.finishPosition ?? "–")}</div>
 <div class="hinfo">
 <div class="hname">Heat ${esc(x.name)}</div>
 <div class="muted">${fmtDate(x.date)}</div>
+${chips ? `<div class="wchips">${chips}</div>` : ""}
 </div>
 <div class="htime ${pb ? "purpletxt" : ""}">${esc(x.bestTime || fmtLap(x.bestTimeMs))}${pb ? `<div class="muted">persoonlijk record</div>` : ""}</div>
 <div class="chev">›</div>
 </button>`;
 })
 .join("");
-return `<div class="toolbar"><span class="muted">${h.data.length} heats</span>
+return `<div class="toolbar"><span class="muted">${mineOnly.length} heats van jou · ${h.data.length - mineOnly.length} van gevolgde coureurs</span>
 <button class="btn small" data-action="refresh-heats">Vernieuwen</button></div>
 <div class="heats">${items}</div>`;
 }
@@ -1188,7 +1197,7 @@ if (c.error) return `${back}<div class="error">${esc(c.error)}</div>`;
 const det = c.details || {};
 const parts = Array.isArray(det.participants) ? [...det.participants].sort((a, b) => (a.position || 99) - (b.position || 99)) : [];
 const myPid = String(this._config.person_id || "");
-const mePart = parts.find((p) => String(p.personId) === myPid);
+const mePart = parts.find((p) => (myPid && String(p.personId) === myPid) || this._isMe(`${p.firstName || ""} ${p.name || ""}`.trim()));
 const fastest = Math.min(...parts.map((p) => Number(p.scoreDefault)).filter((n) => n > 0));
 const result = parts
 .map((p) => {
@@ -1309,7 +1318,7 @@ return `${gap}<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
 .join("");
 return `${head}
 <div class="tower">${rows}</div>
-<div class="toolbar"><span class="muted small">Top 10 en de plekken rond jou</span><button class="btn small" data-action="refresh-ranking">Vernieuwen</button></div>`;
+<div class="toolbar"><span class="muted small">Top 10 en de plekken rond jou · SMS-Timing${c.fetched ? `, opgeslagen ${fmtDate(new Date(c.fetched).toISOString())}` : ""}</span><button class="btn small" data-action="refresh-ranking">Vernieuwen</button></div>`;
 }
 _kaTopTile(tile) {
 if (!this._ka.drivers) return "";
@@ -1630,6 +1639,10 @@ text-transform:uppercase; letter-spacing:.5px; padding:5px 12px; cursor:pointer;
 .ftower .trow.me, .ftower .trow.me.islive { background:linear-gradient(90deg, rgba(225,6,0,.45), #1e1e28 60%); border-left-color:var(--f1-red); }
 .ftower .tg { width:74px; }
 .av.fav-s { width:30px; height:30px; }
+/* ---------- heats: wie reed er ---------- */
+.wchips { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
+.wchip { font-size:.72em; font-weight:900; font-style:italic; padding:1px 7px; transform:skewX(-12deg); background:var(--f1-follow); color:#001; }
+.wchip.me { background:var(--f1-red); color:#fff; }
 /* ---------- coureursnummer ---------- */
 .dno { display:inline-block; min-width:34px; text-align:center; font-weight:900; font-style:italic; font-size:.95em; line-height:1.25;
  padding:0 6px; margin-right:8px; transform:skewX(-12deg); vertical-align:middle; font-variant-numeric:tabular-nums; }

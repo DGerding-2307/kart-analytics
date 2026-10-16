@@ -29,7 +29,7 @@ const CFG = {
   smsApi: process.env.SMS_API || "https://mobile-api7.sms-timing.com/api",
   smsClient: process.env.SMS_CLIENT || "kartenfunfabriek",
 };
-const VERSION = "1.6.1";
+const VERSION = "1.7.0";
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -589,6 +589,7 @@ function summary() {
     totals: { laps: c.n, heats: h.n, karts: c.karts, drivers: c.drivers, first: c.first, last: c.last },
     dbSizeBytes: fs.existsSync(CFG.dbPath) ? fs.statSync(CFG.dbPath).size : 0,
     photos: Boolean(CFG.smsAccessToken && CFG.smsDeviceToken),
+    sms: { ...sms },
   };
 }
 
@@ -737,6 +738,232 @@ function send(res, code, body, type = "application/json; charset=utf-8") {
   res.end(typeof body === "string" || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 
+/* ------------------------------------------------------------------ */
+/* SMS-Timing-gegevens (met jouw sleutels) opslaan en samenvoegen      */
+/* ------------------------------------------------------------------ */
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS sms_heats (session_id TEXT PRIMARY KEY, date TEXT, name TEXT, meta TEXT, details TEXT, laps TEXT, fetched INTEGER);
+CREATE TABLE IF NOT EXISTS sms_records (k TEXT PRIMARY KEY, rows TEXT, fetched INTEGER);
+`);
+try {
+  db.exec("ALTER TABLE heats ADD COLUMN sms_session TEXT");
+} catch (_) {}
+const sms = { tokenOk: null, lastSync: null, lastError: null };
+const smsHeatGet = db.prepare("SELECT * FROM sms_heats WHERE session_id = ?");
+const smsHeatPut = db.prepare(
+  "INSERT INTO sms_heats (session_id, date, name, meta, details, laps, fetched) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET meta = excluded.meta, details = COALESCE(excluded.details, sms_heats.details), laps = COALESCE(excluded.laps, sms_heats.laps), fetched = excluded.fetched"
+);
+const smsRecPut = db.prepare("INSERT INTO sms_records (k, rows, fetched) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET rows = excluded.rows, fetched = excluded.fetched");
+
+async function smsGet(pathq) {
+  const r = await fetch(`${CFG.smsApi}/${pathq}`, {
+    headers: { "X-Fast-AccessToken": CFG.smsAccessToken, "X-Fast-DeviceToken": CFG.smsDeviceToken, "X-Fast-Version": CFG.smsVersion, Accept: "application/json" },
+    signal: AbortSignal.timeout(20000),
+  });
+  if (r.status === 401) {
+    sms.tokenOk = false;
+    throw new Error("sleutel verlopen (401)");
+  }
+  if (!r.ok) throw new Error(`status ${r.status}`);
+  sms.tokenOk = true;
+  const t = await r.text();
+  return t ? JSON.parse(t) : null;
+}
+
+// zelfde periodes als de app ("Vandaag", "Deze week", ...)
+function smsPeriods(now = new Date()) {
+  const ds = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T00:00:00.000Z`;
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  const prev = new Date(monday);
+  prev.setDate(monday.getDate() - 7);
+  return {
+    ever: ["", ""],
+    today: [ds(today), ""],
+    week: [ds(monday), ""],
+    lastweek: [ds(prev), ds(monday)],
+    month: [ds(new Date(today.getFullYear(), today.getMonth(), 1)), ""],
+    year: [ds(new Date(today.getFullYear(), 0, 1)), ""],
+  };
+}
+
+/** zet een opgeslagen SMS-heat om naar de eigen tabellen (als de logger die heat niet al heeft) */
+function mergeSmsHeat(row) {
+  if (!row || !row.details || !row.laps) return;
+  const det = JSON.parse(row.details);
+  const laps = JSON.parse(row.laps);
+  if (!Array.isArray(laps) || !laps.length) return;
+  const start = new Date(det.date || row.date).getTime();
+  if (!isFinite(start)) return;
+  const name = String(det.name || row.name || "").trim();
+  const day = dayKey(start);
+  const exists = db.prepare("SELECT id, sms_session FROM heats WHERE key = ? OR key LIKE ? OR sms_session = ?").all(`${day}|${name}`, `${day}|${name}#%`, String(row.session_id));
+  if (exists.length) {
+    for (const h of exists) if (!h.sms_session) db.prepare("UPDATE heats SET sms_session = ? WHERE id = ?").run(String(row.session_id), h.id);
+    return; // de logger had deze heat al (met alle deelnemers)
+  }
+  const { heatNo, grp } = parseHeatName(name);
+  const r = q.heatInsert.run(`sms|${row.session_id}`, name, heatNo, grp, start, start, start);
+  const hid = Number(r.lastInsertRowid);
+  db.prepare("UPDATE heats SET sms_session = ? WHERE id = ?").run(String(row.session_id), hid);
+  const parts = new Map((det.participants || []).map((p) => [String(p.id), p]));
+  const cum = new Map();
+  for (const l of [...laps].sort((a, b) => a.lapNumber - b.lapNumber)) {
+    const p = parts.get(String(l.participantId)) || {};
+    const first = String(p.firstName || l.firstName || "").trim();
+    const last = String(p.name || l.lastName || "").trim();
+    const driver = (first ? first.charAt(0).toUpperCase() + first.slice(1) : "") + (last ? ` ${last.charAt(0).toUpperCase()}.` : "");
+    const t = (cum.get(l.participantId) || 0) + Number(l.LapTimeMs || 0);
+    cum.set(l.participantId, t);
+    q.lapInsert.run(hid, start + t, Number(l.participantId), driver, null, Number(l.lapNumber), Number(l.LapTimeMs), Number(l.position) || null);
+  }
+  cacheBust();
+}
+
+async function smsSync() {
+  if (!CFG.smsAccessToken || !CFG.smsDeviceToken) return;
+  try {
+    const list = await smsGet(`activity-history/list/${CFG.smsClient}`);
+    for (const h of Array.isArray(list) ? list : []) {
+      const id = String(h.id);
+      const have = smsHeatGet.get(id);
+      if (have && have.details && have.laps) continue;
+      const [details, laps] = await Promise.all([
+        smsGet(`activity-history/details/${CFG.smsClient}?sessionId=${id}`).catch(() => null),
+        smsGet(`racestatistics/laps_fast5/${CFG.smsClient}?sessionId=${id}`).catch(() => null),
+      ]);
+      smsHeatPut.run(id, h.date, h.name, JSON.stringify(h), details ? JSON.stringify(details) : null, laps ? JSON.stringify(laps) : null, Date.now());
+      mergeSmsHeat(smsHeatGet.get(id));
+    }
+    const rsc = CFG.resourceKey.split("@")[0];
+    for (const scg of ["117858", "117860"]) {
+      for (const [per, [st, en]] of Object.entries(smsPeriods())) {
+        const rows = await smsGet(
+          `ranking/records-v2/${CFG.smsClient}?rscId=${rsc}&scgId=${scg}&sorting=0${st ? `&startDate=${encodeURIComponent(st)}` : ""}${en ? `&endDate=${encodeURIComponent(en)}` : ""}`
+        );
+        if (Array.isArray(rows)) smsRecPut.run(`${scg}|${per}`, JSON.stringify(rows), Date.now());
+      }
+    }
+    sms.lastSync = Date.now();
+    sms.lastError = null;
+    log("SMS-Timing-gegevens bijgewerkt");
+  } catch (e) {
+    sms.lastError = e.message;
+    log("SMS-Timing ophalen mislukt:", e.message);
+  }
+}
+
+/** gegevens die de Home Assistant-kaart eerder bewaarde, eenmalig overnemen */
+function importArchive(a) {
+  let heats = 0, recs = 0;
+  for (const [id, e] of Object.entries((a && a.heats) || {})) {
+    if (!/^\d+$/.test(id) || !e) continue;
+    const have = smsHeatGet.get(id);
+    if (have && have.details && have.laps) continue;
+    const meta = e.meta || {};
+    smsHeatPut.run(id, meta.date || (e.details && e.details.date) || null, meta.name || (e.details && e.details.name) || null, JSON.stringify(meta),
+      e.details ? JSON.stringify(e.details) : null, Array.isArray(e.laps) && e.laps.length ? JSON.stringify(e.laps) : null, Date.now());
+    mergeSmsHeat(smsHeatGet.get(id));
+    heats++;
+  }
+  const groups = { 117858: 1, 117860: 1 };
+  for (const [k, e] of Object.entries((a && a.rankings) || {})) {
+    const [g, per] = k.split("|");
+    if (!groups[g] || !e || !Array.isArray(e.rows)) continue;
+    const cur = db.prepare("SELECT fetched FROM sms_records WHERE k = ?").get(k);
+    const at = new Date(e.at || 0).getTime() || 0;
+    if (cur && cur.fetched >= at) continue;
+    smsRecPut.run(k, JSON.stringify(e.rows), at);
+    recs++;
+  }
+  return { heats, records: recs };
+}
+
+function smsRecords(group, period) {
+  const r = db.prepare("SELECT rows, fetched FROM sms_records WHERE k = ?").get(`${group}|${period}`);
+  return r ? { rows: JSON.parse(r.rows), fetched: r.fetched } : { rows: null, fetched: null };
+}
+
+/**
+ * Heats van jou (alle SMS-heats + logger-heats onder jouw namen) en van gevolgde coureurs.
+ * names = jouw namen, follow = namen van gevolgde coureurs (gescheiden door |)
+ */
+function personalHeats(names, follow) {
+  const me = new Set(names.map(nameKey).filter(Boolean));
+  const fol = new Map(follow.map((n) => [nameKey(n), n]).filter(([k]) => k));
+  const rows = loadLaps({ since: 0, grp: "Alle" });
+  const heats = new Map();
+  for (const r of rows) {
+    const k = nameKey(r.driver);
+    const isMe = me.has(k), f = fol.get(k);
+    if (!isMe && !f) continue;
+    if (!heats.has(r.heat_id)) heats.set(r.heat_id, { id: r.heat_id, name: r.heat_name, ts: r.ts, who: new Map() });
+    const h = heats.get(r.heat_id);
+    h.ts = Math.min(h.ts, r.ts);
+    const label = isMe ? "JIJ" : f;
+    if (!h.who.has(label)) h.who.set(label, { me: isMe, name: isMe ? r.driver : f, best: 0, pos: null, lastLap: 0 });
+    const w = h.who.get(label);
+    if (r.lap_no > 1 && r.lap_ms > 0 && (!w.best || r.lap_ms < w.best)) w.best = r.lap_ms;
+    if (r.lap_no >= w.lastLap) { w.lastLap = r.lap_no; w.pos = r.pos; }
+  }
+  // SMS-heats zijn altijd van jou (ook als de naam anders gespeld is)
+  const smsMap = new Map(db.prepare("SELECT id, sms_session FROM heats WHERE sms_session IS NOT NULL").all().map((x) => [x.id, x.sms_session]));
+  for (const row of db.prepare("SELECT * FROM sms_heats").all()) {
+    const meta = row.meta ? JSON.parse(row.meta) : {};
+    const hid = [...smsMap].find(([, s]) => s === String(row.session_id));
+    const id = hid ? hid[0] : null;
+    const key = id ?? `s${row.session_id}`;
+    if (!heats.has(key)) heats.set(key, { id: key, name: row.name, ts: new Date(row.date).getTime(), who: new Map() });
+    const h = heats.get(key);
+    const w = h.who.get("JIJ") || { me: true, name: "JIJ", best: 0, pos: null, lastLap: 0 };
+    const b = Number(meta.bestTimeMs) || 0;
+    if (b && (!w.best || b < w.best)) w.best = b;
+    if (meta.finishPosition) w.pos = meta.finishPosition;
+    h.who.set("JIJ", w);
+  }
+  return [...heats.values()]
+    .map((h) => ({ id: h.id, name: h.name, ts: h.ts, who: [...h.who.values()].map(({ lastLap, ...w }) => w) }))
+    .sort((a, b) => b.ts - a.ts);
+}
+
+/** uitslag + rondes van één heat (logger of SMS), met personId waar bekend */
+function heatFull(id) {
+  let sessionId = null, base = null;
+  if (/^s\d+$/.test(String(id))) sessionId = String(id).slice(1);
+  else {
+    base = heatDetail(Number(id));
+    const h = db.prepare("SELECT sms_session, first_seen FROM heats WHERE id = ?").get(Number(id));
+    sessionId = h && h.sms_session;
+    if (h) base.ts = h.first_seen;
+  }
+  const row = sessionId ? smsHeatGet.get(sessionId) : null;
+  const det = row && row.details ? JSON.parse(row.details) : null;
+  const pids = new Map();
+  for (const p of (det && det.participants) || []) pids.set(nameKey(`${p.firstName || ""} ${p.name || ""}`), String(p.personId || ""));
+  if (base && base.participants.length) {
+    return {
+      id, name: base.name, ts: base.ts,
+      participants: base.participants.map((p) => {
+        const best = Math.min(...p.laps.filter((l) => l.lap > 1).map((l) => l.ms).concat([1e12]));
+        const last = p.laps.reduce((a, l) => (l.lap >= (a ? a.lap : 0) ? l : a), null);
+        return { name: p.driver, kart: p.kart, personId: pids.get(nameKey(p.driver)) || "", best: best < 1e12 ? best : null, pos: last ? last.pos : null, laps: p.laps };
+      }),
+    };
+  }
+  if (!det) return { id, name: row ? row.name : "", ts: row ? new Date(row.date).getTime() : null, participants: [] };
+  const laps = row.laps ? JSON.parse(row.laps) : [];
+  return {
+    id, name: det.name, ts: new Date(det.date).getTime(),
+    participants: (det.participants || []).map((p) => ({
+      name: `${p.firstName || ""} ${p.name || ""}`.trim(), kart: null, personId: String(p.personId || ""),
+      best: Number(p.scoreDefault) || null, pos: p.position,
+      laps: laps.filter((l) => String(l.participantId) === String(p.id)).sort((a, b) => a.lapNumber - b.lapNumber).map((l) => ({ lap: l.lapNumber, ms: Number(l.LapTimeMs), pos: l.position, flag: "clean" })),
+    })),
+  };
+}
+
 function csv(opts) {
   const rows = loadLaps(opts);
   const head = "tijd,heat,kart,coureur,ronde,rondetijd_ms,positie,markering";
@@ -745,6 +972,18 @@ function csv(opts) {
 }
 
 const server = http.createServer(async (req, res) => {
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/import-archive") {
+    let body = "";
+    for await (const c of req) {
+      body += c;
+      if (body.length > 20e6) return send(res, 413, { error: "te groot" });
+    }
+    try {
+      return send(res, 200, importArchive(JSON.parse(body)));
+    } catch (e) {
+      return send(res, 400, { error: e.message });
+    }
+  }
   // foto als tekst (base64), voor Home Assistant via https (rest_command kan geen plaatjes doorgeven)
   const m64 = /^\/api\/photo64\/(\d{5,25})$/.exec(req.url.split("?")[0]);
   if (m64) {
@@ -784,6 +1023,10 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/drivers") return send(res, 200, driverStats(opts));
     if (p.startsWith("/api/driver/")) return send(res, 200, driverDetail(decodeURIComponent(p.slice(12)), opts));
     if (p === "/api/heats") return send(res, 200, heatList(opts));
+    if (p === "/api/myheats") return send(res, 200, personalHeats((P.get("names") || "").split("|"), (P.get("follow") || "").split("|").filter(Boolean)));
+    if (p.startsWith("/api/heatfull/")) return send(res, 200, heatFull(decodeURIComponent(p.slice(14))));
+    if (p === "/api/records") return send(res, 200, smsRecords(P.get("group") || "117858", P.get("period") || "ever"));
+    if (p === "/api/sms") return send(res, 200, { ...sms, keys: Boolean(CFG.smsAccessToken && CFG.smsDeviceToken), heats: db.prepare("SELECT COUNT(*) n FROM sms_heats").get().n });
     if (p.startsWith("/api/heat/")) return send(res, 200, heatDetail(Number(p.slice(10))));
     if (p === "/api/conditions") return send(res, 200, conditions(opts));
     if (p === "/api/export.csv") return send(res, 200, csv(opts), "text/csv; charset=utf-8");
@@ -808,6 +1051,9 @@ if (require.main === module) {
   startWatchdog();
   // namenlijst voor foto's: bij start en elke 20 minuten (alleen als de sleutels zijn ingesteld)
   setTimeout(refreshPeople, 5000);
+  // SMS-Timing-gegevens (jouw heats + klassementen) bij start en elk half uur
+  setTimeout(smsSync, 15000);
+  setInterval(smsSync, 30 * 60000);
   setInterval(refreshPeople, 20 * 60000);
   const stop = () => {
     log("afsluiten");
@@ -821,4 +1067,4 @@ if (require.main === module) {
   process.on("SIGINT", stop);
 }
 
-module.exports = { handleMessage, kartStats, kartDetail, driverStats, driverDetail, conditions, heatList, heatDetail, summary, db };
+module.exports = { importArchive, personalHeats, heatFull, smsRecords, handleMessage, kartStats, kartDetail, driverStats, driverDetail, conditions, heatList, heatDetail, summary, db };
