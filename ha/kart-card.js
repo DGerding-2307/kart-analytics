@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "4.0.1";
+const KART_CARD_VERSION = "4.1.0";
 const FOLLOW_STORE = "kart-card-follows";
 const KNOWN_STORE = "kart-card-known";
 const ARCHIVE_KEY = "kart_card_archive";
@@ -1300,7 +1300,7 @@ const fol = !me && this._isFollowed(r.driver, "");
 const pc = i < 3 ? ` p${i + 1}` : "";
 return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
 <div class="tpos${pc}">${i + 1}</div>
-<div class="tname">${this._av(this._pidFor(r.driver))}${this._dno(r.driver)}${esc(r.driver)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">top ${Math.max(1, Math.ceil(((i + 1) / rows.length) * 100))}% · ${r.heats} heat${r.heats === 1 ? "" : "s"} · ${r.laps} rondes · ${fmtAgo(r.last)}</div></div>
+<div class="tname">${this._av(this._pidFor(r.driver))}${this._dno(r.driver)}${esc(r.driver)}${me ? `<span class="tag">JIJ</span>` : ""}<div class="muted small">top ${Math.max(1, Math.ceil(((i + 1) / rows.length) * 100))}% · ${r.laps ? `${r.heats} heat${r.heats === 1 ? "" : "s"} · ${r.laps} rondes · ${fmtAgo(r.last)}` : ""}${r.bestSrc ? `${r.laps ? " · " : ""}beste uit SMS-Timing${r.bestKart ? ` (kart ${esc(r.bestKart)})` : ""} · ${fmtDate(new Date(r.bestAt).toISOString(), false)}` : ""}</div></div>
 <div class="tt ${i === 0 ? "purple" : ""}" title="snelste ronde">${fmtLap(r.best)}</div>
 <div class="tg">${i === 0 ? "" : fmtDelta(r.best - lead)}</div>
 <div class="tt muted" title="Regressie: verwachte rondetijd in een gemiddelde kart${r.ratingSe ? ` (± ${(r.ratingSe / 1000).toFixed(3)} s)` : ""}">${r.rating ? fmtLap(r.rating) : "–"}</div>
