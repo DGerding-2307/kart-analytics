@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "4.1.1";
+const KART_CARD_VERSION = "4.2.0";
 const FOLLOW_STORE = "kart-card-follows";
 const KNOWN_STORE = "kart-card-known";
 const ARCHIVE_KEY = "kart_card_archive";
@@ -144,7 +144,7 @@ this._offline = false;
 this._liveRec = {};
 this._ka = {};
 this._kaMode = null;
-this._rankSrc = "sms";
+this._rankSrc = "own";
 }
 async _loadArchive() {
 try {
@@ -1263,11 +1263,8 @@ const groups = SCORE_GROUPS.map(
 const periods = PERIODS.map(
 (p) => `<button class="chip ${p.id === this._period ? "on" : ""}" data-action="period" data-period="${p.id}">${p.name}</button>`
 ).join("");
-const srcs = [["sms", "Top 10 (SMS-Timing)"], ["own", "Volledig (eigen logger)"]]
-.map(([id, n]) => `<button class="chip ${this._rankSrc === id ? "on" : ""}" data-action="ranksrc" data-src="${id}">${n}</button>`)
-.join("");
-const head = `<div class="chips">${srcs}</div><div class="chips">${groups}</div><div class="chips">${periods}</div>`;
-if (this._rankSrc === "own") return head + this._renderOwnRanking();
+const head = `<div class="chips">${groups}</div><div class="chips">${periods}</div>`;
+return head + this._renderOwnRanking();
 const c = this._ranking[this._rankKey(this._group, this._period)];
 if (!c || (!c.rows && !c.error)) return `${head}<div class="empty">Klassement laden…</div>`;
 if (c.error) return `${head}<div class="error">${esc(c.error)}</div><button class="btn" data-action="refresh-ranking">Opnieuw proberen</button>`;
