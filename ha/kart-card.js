@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "4.3.0";
+const KART_CARD_VERSION = "4.4.1";
 const FOLLOW_STORE = "kart-card-follows";
 const KNOWN_STORE = "kart-card-known";
 const ARCHIVE_KEY = "kart_card_archive";
@@ -177,6 +177,8 @@ this._archive = {};
 }
 const A = this._archive;
 A.heats = A.heats || {};
+// alleen echte SMS-sessienummers bewaren (geen eigen heat-nummers van de server)
+for (const k of Object.keys(A.heats)) if (!/^\d{6,}$/.test(k)) delete A.heats[k];
 A.rankings = A.rankings || {};
 A.live = A.live || {};
 if (Array.isArray(A.follows)) {
@@ -653,7 +655,6 @@ return { id: String(x.id), name: x.name, date: new Date(x.ts).toISOString(), bes
 .then((list) => {
 h.data = Array.isArray(list) ? list : [];
 this._offline = false;
-this._archiveHeats(h.data);
 return h.data;
 })
 .catch((e) => {
@@ -692,7 +693,6 @@ return [details, laps];
 .then(([details, laps]) => {
 c.details = details || {};
 c.laps = Array.isArray(laps) ? laps : [];
-this._archiveHeat(id, c.details, c.laps);
 return c;
 })
 .catch((e) => {
@@ -907,6 +907,14 @@ this._addFollow({ name: el.dataset.name, personId: el.dataset.pid || "" });
 } else if (a === "unfollow") {
 ev.stopPropagation();
 this._removeFollow(el.dataset.name, el.dataset.pid || "");
+} else if (a === "hsel") {
+const S = this._heatSel && this._heatSel[el.dataset.hid];
+if (S) {
+const k = String(el.dataset.pid);
+if (S.has(k)) S.delete(k);
+else S.add(k);
+this._render();
+}
 } else if (a === "ranksrc") {
 this._rankSrc = el.dataset.src;
 this._render();
@@ -1209,12 +1217,23 @@ const parts = Array.isArray(det.participants) ? [...det.participants].sort((a, b
 const myPid = String(this._config.person_id || "");
 const mePart = parts.find((p) => (myPid && String(p.personId) === myPid) || this._isMe(`${p.firstName || ""} ${p.name || ""}`.trim()));
 const fastest = Math.min(...parts.map((p) => Number(p.scoreDefault)).filter((n) => n > 0));
+// welke coureurs staan in de grafiek: standaard jij + gevolgde coureurs (anders de winnaar)
+const SEL = (this._heatSel = this._heatSel || {});
+if (!SEL[id]) {
+const def = parts.filter((p) => (mePart && p.id === mePart.id) || this._isFollowed(`${p.firstName || ""} ${p.name || ""}`.trim(), p.personId)).map((p) => String(p.id));
+SEL[id] = new Set(def.length ? def : parts.slice(0, 1).map((p) => String(p.id)));
+}
+const sel = SEL[id];
+const CCOL = ["#27F4D2", "#FF8000", "#3671C6", "#52E252", "#F596C8", "#FFD12E", "#64C4FF", "#B6BABD", "#229971", "#A64DFF"];
+const colOf = new Map(parts.map((p, i) => [String(p.id), mePart && p.id === mePart.id ? "#E10600" : CCOL[i % CCOL.length]]));
 const result = parts
 .map((p) => {
 const me = mePart && p.id === mePart.id;
 const name = `${p.firstName || ""} ${p.name || ""}`.trim();
 const fol = this._isFollowed(name, p.personId);
+const on = sel.has(String(p.id));
 return `<div class="trow ${me ? "me" : ""} ${fol ? "fol" : ""}">
+<div class="tck"><span class="ck ${on ? "on" : ""}" style="--c:${colOf.get(String(p.id))}" data-action="hsel" data-hid="${esc(id)}" data-pid="${esc(p.id)}" title="${on ? "Uit de grafiek halen" : "In de grafiek tonen"}">${on ? "✓" : ""}</span></div>
 <div class="tpos">${esc(p.position)}</div>
 <div class="tname">${this._av(p.personId)}${this._dno(name)}${esc(name)}${me ? `<span class="tag">JIJ</span>` : ""}</div>
 <div class="tt ${Number(p.scoreDefault) === fastest ? "purple" : ""}">${Number(p.scoreDefault) > 0 ? esc(p.score) : "–"}</div>
@@ -1241,7 +1260,6 @@ lapsHtml = `
 <div class="tile"><div class="tlabel">Gemiddeld*</div><div class="tvalue">${fmtLap(avg)}</div><div class="tsub">${fmtDelta(avg - best)} op je beste</div></div>
 <div class="tile"><div class="tlabel">Constantheid</div><div class="tvalue">±${(consistency / 1000).toFixed(2)}s</div><div class="tsub">spreiding per ronde</div></div>
 </div>
-${this._lapChart(times, best, median)}
 <div class="tower laps">
 <div class="trow head"><div class="tpos">Rnd</div><div class="tt">Tijd</div><div class="tg">Δ beste</div><div class="tl">Pos</div></div>
 ${mine
@@ -1258,11 +1276,52 @@ return `<div class="trow"><div class="tpos">${esc(l.lapNumber)}</div><div class=
 } else if (myPid) {
 lapsHtml = `<div class="muted">Je eigen rondes zijn niet gevonden in deze heat (klopt person_id?).</div>`;
 }
+const series = parts
+.filter((p) => sel.has(String(p.id)))
+.map((p) => ({
+name: `${p.firstName || ""} ${p.name || ""}`.trim(),
+color: colOf.get(String(p.id)),
+laps: c.laps.filter((l) => String(l.participantId) === String(p.id)).sort((a, b) => a.lapNumber - b.lapNumber).map((l) => ({ lap: Number(l.lapNumber), ms: Number(l.LapTimeMs) })),
+}))
+.filter((x) => x.laps.length);
+const chartHtml = series.length
+? `<div class="section-h"><span>Rondetijden</span><span class="muted small">vink coureurs aan in de uitslag</span></div>
+${this._lapChartMulti(series)}
+<div class="legend">${series.map((x) => `<span class="sw" style="background:${x.color}"></span>${esc(x.name)}`).join(" ")}</div>`
+: `<div class="muted small" style="margin-top:8px">Vink coureurs aan in de uitslag om hun rondes in de grafiek te zien.</div>`;
 return `${back}
 <div class="heatbar"><div class="heatname">Heat ${esc(det.name || "")}</div><div class="muted">${fmtDate(det.date)}</div></div>
 <div class="section-h"><span>Uitslag</span></div>
 <div class="tower">${result}</div>
+${chartHtml}
 ${lapsHtml}`;
+}
+_lapChartMulti(series) {
+const W = 600, H = 210, P = 34;
+const all = series.flatMap((x) => x.laps.filter((l) => l.lap > 1).map((l) => l.ms));
+const allMs = all.length ? all : series.flatMap((x) => x.laps.map((l) => l.ms));
+const best = Math.min(...allMs);
+const sorted = [...allMs].sort((a, b) => a - b);
+const p90 = sorted[Math.floor(sorted.length * 0.9)];
+const hi = Math.max(best + 1500, p90 + 300);
+const lo = best - 300;
+const maxLap = Math.max(...series.flatMap((x) => x.laps.map((l) => l.lap)));
+const x = (n) => P + (maxLap <= 1 ? (W - 2 * P) / 2 : ((n - 1) * (W - 2 * P)) / (maxLap - 1));
+const y = (t) => 12 + ((Math.min(t, hi) - lo) / (hi - lo)) * (H - 40);
+let grid = "";
+for (let v = Math.ceil(lo / 500) * 500; v <= hi; v += 500) grid += `<line x1="${P}" x2="${W - P}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="#2c2c3e"/><text class="cx" x="${P - 4}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${(v / 1000).toFixed(1)}</text>`;
+const lines = series
+.map((s) => {
+const pts = s.laps.map((l) => `${x(l.lap).toFixed(1)},${y(l.ms).toFixed(1)}`).join(" ");
+const dots = s.laps
+.map((l) => `<circle cx="${x(l.lap).toFixed(1)}" cy="${y(l.ms).toFixed(1)}" r="${l.ms === best ? 5 : 3.2}" fill="${l.ms === best ? "#A64DFF" : s.color}" ${l.ms > hi ? 'opacity=".45"' : ""}><title>${esc(s.name)} · ronde ${l.lap}: ${fmtLap(l.ms)}</title></circle>`)
+.join("");
+return `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2.2" stroke-linejoin="round"/>${dots}`;
+})
+.join("");
+let labels = "";
+for (let n = 1; n <= maxLap; n++) if (maxLap <= 20 || n % 2 === 1) labels += `<text class="cx" x="${x(n).toFixed(1)}" y="${H - 8}">${n}</text>`;
+return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Rondetijden per coureur">${grid}${lines}${labels}</svg>`;
 }
 _lapChart(times, best, median) {
 const W = 600,
@@ -1647,6 +1706,10 @@ text-transform:uppercase; letter-spacing:.5px; padding:5px 12px; cursor:pointer;
 .ftower .tg { width:74px; }
 .av.fav-s { width:30px; height:30px; }
 /* ---------- heats: wie reed er ---------- */
+.tck { width:28px; flex:none; display:flex; justify-content:center; }
+.ck { width:18px; height:18px; border:2px solid var(--c); display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:900; color:#000; cursor:pointer; transform:skewX(-10deg); }
+.ck.on { background:var(--c); }
+.legend .sw { width:14px; height:4px; display:inline-block; margin:0 4px 0 10px; vertical-align:middle; }
 .section-h.hgroup .av { width:30px; height:30px; margin-right:8px; }
 .wchips { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
 .wchip { font-size:.72em; font-weight:900; font-style:italic; padding:1px 7px; transform:skewX(-12deg); background:var(--f1-follow); color:#001; }

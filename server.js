@@ -23,7 +23,7 @@ const CFG = {
   // rondes langzamer dan dit tellen nooit als schone ronde (volwassenen)
   cleanMaxMs: Number(process.env.CLEAN_MAX_MS || 40000),
 };
-const VERSION = "2.0.1";
+const VERSION = "2.0.2";
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -725,6 +725,19 @@ CREATE TABLE IF NOT EXISTS sms_records (k TEXT PRIMARY KEY, rows TEXT, fetched I
 try {
   db.exec("ALTER TABLE heats ADD COLUMN sms_session TEXT");
 } catch (_) {}
+// opruimen: alleen echte SMS-sessienummers (6+ cijfers); eerder per ongeluk opgeslagen eigen heat-id's weghalen
+{
+  const bad = db.prepare("SELECT session_id FROM sms_heats WHERE length(session_id) < 6").all().map((r) => r.session_id);
+  if (bad.length) {
+    for (const b of bad) db.prepare("UPDATE heats SET sms_session = NULL WHERE sms_session = ?").run(b);
+    db.prepare("DELETE FROM sms_heats WHERE length(session_id) < 6").run();
+    for (const h of db.prepare("SELECT id FROM heats WHERE key LIKE 'sms|%' AND length(key) < 10").all()) {
+      db.prepare("DELETE FROM laps WHERE heat_id = ?").run(h.id);
+      db.prepare("DELETE FROM heats WHERE id = ?").run(h.id);
+    }
+    log(`${bad.length} dubbele heats opgeruimd`);
+  }
+}
 const smsHeatGet = db.prepare("SELECT * FROM sms_heats WHERE session_id = ?");
 const smsHeatPut = db.prepare(
   "INSERT INTO sms_heats (session_id, date, name, meta, details, laps, fetched) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET meta = excluded.meta, details = COALESCE(excluded.details, sms_heats.details), laps = COALESCE(excluded.laps, sms_heats.laps), fetched = excluded.fetched"
@@ -768,7 +781,7 @@ function mergeSmsHeat(row) {
 function importArchive(a) {
   let heats = 0, recs = 0;
   for (const [id, e] of Object.entries((a && a.heats) || {})) {
-    if (!/^\d+$/.test(id) || !e) continue;
+    if (!/^\d{6,}$/.test(id) || !e) continue; // alleen echte SMS-sessienummers
     const have = smsHeatGet.get(id);
     if (have && have.details && have.laps) continue;
     const meta = e.meta || {};
@@ -820,7 +833,7 @@ function personalHeats(names, follow) {
   }
   // SMS-heats zijn altijd van jou (ook als de naam anders gespeld is)
   const smsMap = new Map(db.prepare("SELECT id, sms_session FROM heats WHERE sms_session IS NOT NULL").all().map((x) => [x.id, x.sms_session]));
-  for (const row of db.prepare("SELECT * FROM sms_heats").all()) {
+  for (const row of db.prepare("SELECT * FROM sms_heats WHERE length(session_id) >= 6").all()) {
     const meta = row.meta ? JSON.parse(row.meta) : {};
     const hid = [...smsMap].find(([, s]) => s === String(row.session_id));
     const id = hid ? hid[0] : null;
