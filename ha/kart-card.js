@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "3.7.1";
+const KART_CARD_VERSION = "3.7.2";
 const LIVE_WS_URL = "wss://webserver7.sms-timing.com:10015/";
 const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
 const FOLLOW_STORE = "kart-card-follows";
@@ -1407,12 +1407,11 @@ const all = ranked.length
 ? `<div class="tower">${head}${ranked.map((x, i) => kRow(x, i)).join("")}</div>`
 : "";
 return `${status}
-<div class="section-h"><span>Welke kart kies ik?</span><button class="link" data-action="refresh-ka">Vernieuwen</button></div>
-${kartHtml}
-<div class="muted small" style="margin-top:6px">Kart-effect = seconden per ronde sneller (−) of langzamer (+) dan een gemiddelde kart, berekend met regressie: gecorrigeerd voor wie erin reed en voor opwarmrondes.</div>
-<div class="section-h"><span>Jij</span></div>
+<div class="section-h"><span>Jij</span><button class="link" data-action="refresh-ka">Vernieuwen</button></div>
 ${meHtml}
-${ranked.length > 8 ? `<div class="section-h"><span>Alle karts</span></div>${all}` : ""}
+<div class="section-h"><span>Alle karts</span></div>
+${ranked.length ? all : kartHtml}
+<div class="muted small" style="margin-top:6px">Kart-effect = seconden per ronde sneller (−) of langzamer (+) dan een gemiddelde kart, berekend met regressie: gecorrigeerd voor wie erin reed en voor opwarmrondes.</div>
 <div class="section-h"><span>Meer</span></div>
 <a class="btn" style="display:inline-block;text-decoration:none" href="${esc(base)}" target="_blank" rel="noopener">Open volledig analysescherm ↗</a>
 <div class="muted small" style="margin-top:6px">Grafieken per kart, per coureur, per heat, opwarmcurve en tijdstip van de dag.${this._kaMode === "rest" ? " (gegevens via Home Assistant)" : ""}</div>`;
