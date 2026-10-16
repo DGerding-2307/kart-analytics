@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "4.2.0";
+const KART_CARD_VERSION = "4.3.0";
 const FOLLOW_STORE = "kart-card-follows";
 const KNOWN_STORE = "kart-card-known";
 const ARCHIVE_KEY = "kart_card_archive";
@@ -108,6 +108,28 @@ return `${first} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
 function sameName(a, b) {
 const n = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
 return !!n(a) && n(a) === n(b);
+}
+function ownRange(period, now = new Date()) {
+const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+const monday = new Date(today);
+monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+const t = (d) => d.getTime();
+switch (period) {
+case "today": return { since: t(today), until: 0 };
+case "week": return { since: t(monday), until: 0 };
+case "lastweek": { const prev = new Date(monday); prev.setDate(monday.getDate() - 7); return { since: t(prev), until: t(monday) }; }
+case "month": return { since: t(new Date(today.getFullYear(), today.getMonth(), 1)), until: 0 };
+case "year": return { since: t(new Date(today.getFullYear(), 0, 1)), until: 0 };
+default: return { since: 0, until: 0 };
+}
+}
+function fmtAgo(ts) {
+if (!ts) return "nooit";
+const s = (Date.now() - ts) / 1000;
+if (s < 90) return `${Math.round(s)} s geleden`;
+if (s < 5400) return `${Math.round(s / 60)} min geleden`;
+if (s < 172800) return `${Math.round(s / 3600)} uur geleden`;
+return `${Math.round(s / 86400)} dagen geleden`;
 }
 function storeGet(key) {
 try {
@@ -1142,28 +1164,40 @@ const h = this._heats;
 if (h.error) return `<div class="error">${esc(h.error)}</div><button class="btn" data-action="refresh-heats">Opnieuw proberen</button>`;
 if (!h.data) return `<div class="empty">Heats laden…</div>`;
 if (!h.data.length) return `<div class="empty">Nog geen heats gevonden.</div>`;
-const mineOnly = h.data.filter((x) => x.mine !== false);
-const bestOverall = Math.min(...mineOnly.map((x) => Number(x.bestTimeMs)).filter((n) => n > 0));
-const items = h.data
-.map((x) => {
-const pb = x.mine !== false && Number(x.bestTimeMs) === bestOverall;
-const p = Number(x.finishPosition) || 0;
-const chips = (x.who || []).map((w) => `<span class="wchip ${w.me ? "me" : ""}">${w.me ? "JIJ" : esc(tla(w.name))}${w.pos ? ` P${esc(w.pos)}` : ""}${w.best ? ` · ${fmtLap(w.best)}` : ""}</span>`).join("");
+// per coureur: eerst jij, dan de gevolgde coureurs
+const groups = [{ me: true, name: this._myLiveName() || "Jij", pid: String(this._config.person_id || ""), match: (w) => w.me }].concat(
+this._follows.map((f) => ({ me: false, name: f.name, pid: f.personId || this._pidFor(f.name), match: (w) => !w.me && (sameName(w.name, f.name) || sameName(w.name, liveName(f.name)) || sameName(liveName(w.name), liveName(f.name))) }))
+);
+const sections = groups
+.map((g) => {
+const list = h.data.map((x) => ({ x, w: (x.who || []).find(g.match) })).filter((r) => r.w);
+if (!list.length) return "";
+const bests = list.map((r) => Number(r.w.best)).filter((n) => n > 0);
+const pbMs = bests.length ? Math.min(...bests) : 0;
+const items = list
+.map(({ x, w }) => {
+const p = Number(w.pos) || 0;
+const pb = w.best && Number(w.best) === pbMs;
+const others = (x.who || []).filter((o) => o !== w).map((o) => `<span class="wchip ${o.me ? "me" : ""}">${o.me ? "JIJ" : esc(tla(o.name))}${o.pos ? ` P${esc(o.pos)}` : ""}${o.best ? ` · ${fmtLap(o.best)}` : ""}</span>`).join("");
 return `<button class="heat" data-action="heat" data-id="${esc(x.id)}">
-<div class="pbadge p${p && p <= 3 ? p : 0}">P${esc(x.finishPosition ?? "–")}</div>
+<div class="pbadge p${p && p <= 3 ? p : 0}">P${esc(w.pos ?? "–")}</div>
 <div class="hinfo">
 <div class="hname">Heat ${esc(x.name)}</div>
 <div class="muted">${fmtDate(x.date)}</div>
-${chips ? `<div class="wchips">${chips}</div>` : ""}
+${others ? `<div class="wchips">${others}</div>` : ""}
 </div>
-<div class="htime ${pb ? "purpletxt" : ""}">${esc(x.bestTime || fmtLap(x.bestTimeMs))}${pb ? `<div class="muted">persoonlijk record</div>` : ""}</div>
+<div class="htime ${pb ? "purpletxt" : ""}">${fmtLap(w.best)}${pb ? `<div class="muted">beste tijd</div>` : ""}</div>
 <div class="chev">›</div>
 </button>`;
 })
 .join("");
-return `<div class="toolbar"><span class="muted">${mineOnly.length} heats van jou · ${h.data.length - mineOnly.length} van gevolgde coureurs</span>
-<button class="btn small" data-action="refresh-heats">Vernieuwen</button></div>
+return `<div class="section-h hgroup">${this._av(g.pid, "av")}<span>${g.me ? "Jij" : esc(g.name)}</span><span class="muted small">${list.length} heat${list.length === 1 ? "" : "s"}${pbMs ? ` · beste ${fmtLap(pbMs)}` : ""}</span></div>
 <div class="heats">${items}</div>`;
+})
+.join("");
+return `<div class="toolbar"><span class="muted">Heats per coureur · jij en ${this._follows.length} gevolgd</span>
+<button class="btn small" data-action="refresh-heats">Vernieuwen</button></div>
+${sections || `<div class="empty">Nog geen heats gevonden.</div>`}`;
 }
 _renderHeatDetail(id) {
 const back = `<button class="btn small" data-action="back">‹ Terug</button>`;
@@ -1613,6 +1647,7 @@ text-transform:uppercase; letter-spacing:.5px; padding:5px 12px; cursor:pointer;
 .ftower .tg { width:74px; }
 .av.fav-s { width:30px; height:30px; }
 /* ---------- heats: wie reed er ---------- */
+.section-h.hgroup .av { width:30px; height:30px; margin-right:8px; }
 .wchips { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
 .wchip { font-size:.72em; font-weight:900; font-style:italic; padding:1px 7px; transform:skewX(-12deg); background:var(--f1-follow); color:#001; }
 .wchip.me { background:var(--f1-red); color:#fff; }
