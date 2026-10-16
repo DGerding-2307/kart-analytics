@@ -23,7 +23,7 @@ const CFG = {
   // rondes langzamer dan dit tellen nooit als schone ronde (volwassenen)
   cleanMaxMs: Number(process.env.CLEAN_MAX_MS || 40000),
 };
-const VERSION = "2.0.2";
+const VERSION = "2.0.3";
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -522,7 +522,7 @@ function mergeRecords(list, opts) {
       const ms = scoreMs(row.score);
       const ts = new Date(row.date).getTime();
       const k = nameKey(row.participant);
-      if (!ms || !k || !isFinite(ts)) continue;
+      if (!ms || !k || !isFinite(ts) || isExcluded(row.participant, ms)) continue;
       if (ts < (opts.since || 0) || (opts.until && ts >= opts.until)) continue;
       const d = byKey.get(k);
       if (d) {
@@ -661,9 +661,10 @@ function peopleMap() {
 /** namen ↔ personId en plek 'ooit' uit de opgeslagen SMS-klassementen */
 function refreshPeople() {
   let n = 0;
-  for (const r of db.prepare("SELECT k, rows FROM sms_records").all()) {
+  db.exec("UPDATE people SET ever_pos = NULL");
+  for (const r of db.prepare("SELECT k FROM sms_records").all()) {
     const [scg, per] = r.k.split("|");
-    for (const row of JSON.parse(r.rows) || []) {
+    for (const row of smsRecords(scg, per).rows || []) {
       const k = nameKey(row.participant);
       if (!k || !row.personId) continue;
       peopleUpsert.run(k, String(row.participant), String(row.personId), Date.now());
@@ -738,6 +739,10 @@ try {
     log(`${bad.length} dubbele heats opgeruimd`);
   }
 }
+// ongeldige rondes/records die niet mogen meetellen (bv. een startronde die als record werd geteld)
+db.exec("CREATE TABLE IF NOT EXISTS excluded (key TEXT NOT NULL, ms INTEGER NOT NULL, note TEXT, PRIMARY KEY (key, ms))");
+db.prepare("INSERT OR IGNORE INTO excluded (key, ms, note) VALUES (?, ?, ?)").run("danny e.", 31163, "startronde, ongeldig (door SMS-Timing verwijderd)");
+const isExcluded = (name, ms) => !!db.prepare("SELECT 1 FROM excluded WHERE key = ? AND ms = ?").get(nameKey(name), Number(ms));
 const smsHeatGet = db.prepare("SELECT * FROM sms_heats WHERE session_id = ?");
 const smsHeatPut = db.prepare(
   "INSERT INTO sms_heats (session_id, date, name, meta, details, laps, fetched) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET meta = excluded.meta, details = COALESCE(excluded.details, sms_heats.details), laps = COALESCE(excluded.laps, sms_heats.laps), fetched = excluded.fetched"
@@ -806,7 +811,14 @@ function importArchive(a) {
 
 function smsRecords(group, period) {
   const r = db.prepare("SELECT rows, fetched FROM sms_records WHERE k = ?").get(`${group}|${period}`);
-  return r ? { rows: JSON.parse(r.rows), fetched: r.fetched } : { rows: null, fetched: null };
+  if (!r) return { rows: null, fetched: null };
+  const all = JSON.parse(r.rows);
+  const gone = all.filter((x) => isExcluded(x.participant, scoreMs(x.score))).map((x) => Number(x.position) || 0);
+  // plekken van iedereen achter een verwijderde tijd schuiven één op
+  const rows = all
+    .filter((x) => !isExcluded(x.participant, scoreMs(x.score)))
+    .map((x) => ({ ...x, position: (Number(x.position) || 0) - gone.filter((g) => g && g < Number(x.position)).length }));
+  return { rows, fetched: r.fetched };
 }
 
 /**
