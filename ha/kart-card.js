@@ -1,5 +1,4 @@
-const KART_CARD_VERSION = "4.0.0";
-const LIVE_RESOURCE_KEY = "26932@kartenfunfabriek";
+const KART_CARD_VERSION = "4.0.1";
 const FOLLOW_STORE = "kart-card-follows";
 const KNOWN_STORE = "kart-card-known";
 const ARCHIVE_KEY = "kart_card_archive";
@@ -109,53 +108,6 @@ return `${first} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
 function sameName(a, b) {
 const n = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
 return !!n(a) && n(a) === n(b);
-}
-function dayStr(d) {
-return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T00:00:00.000Z`;
-}
-function periodRange(period, now = new Date()) {
-const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-const monday = new Date(today);
-monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
-switch (period) {
-case "today":
-return { start_date: dayStr(today), end_date: "" };
-case "week":
-return { start_date: dayStr(monday), end_date: "" };
-case "lastweek": {
-const prev = new Date(monday);
-prev.setDate(monday.getDate() - 7);
-return { start_date: dayStr(prev), end_date: dayStr(monday) };
-}
-case "month":
-return { start_date: dayStr(new Date(today.getFullYear(), today.getMonth(), 1)), end_date: "" };
-case "year":
-return { start_date: dayStr(new Date(today.getFullYear(), 0, 1)), end_date: "" };
-default:
-return { start_date: "", end_date: "" };
-}
-}
-function ownRange(period, now = new Date()) {
-const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-const monday = new Date(today);
-monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
-const t = (d) => d.getTime();
-switch (period) {
-case "today": return { since: t(today), until: 0 };
-case "week": return { since: t(monday), until: 0 };
-case "lastweek": { const prev = new Date(monday); prev.setDate(monday.getDate() - 7); return { since: t(prev), until: t(monday) }; }
-case "month": return { since: t(new Date(today.getFullYear(), today.getMonth(), 1)), until: 0 };
-case "year": return { since: t(new Date(today.getFullYear(), 0, 1)), until: 0 };
-default: return { since: 0, until: 0 };
-}
-}
-function fmtAgo(ts) {
-if (!ts) return "nooit";
-const s = (Date.now() - ts) / 1000;
-if (s < 90) return `${Math.round(s)} s geleden`;
-if (s < 5400) return `${Math.round(s / 60)} min geleden`;
-if (s < 172800) return `${Math.round(s / 3600)} uur geleden`;
-return `${Math.round(s / 86400)} dagen geleden`;
 }
 function storeGet(key) {
 try {
@@ -358,8 +310,7 @@ throw new Error(`rest_command.${service} werkt niet (${msg}). Staat het in confi
 }
 const resp = r && r.response;
 if (!resp) throw new Error(`Geen antwoord van rest_command.${service}.`);
-if (resp.status === 401) throw new Error("Geen toegang (401): de app-sleutels in secrets.yaml kloppen niet of zijn verlopen.");
-if (resp.status !== 200) throw new Error(`SMS-Timing gaf foutcode ${resp.status}.`);
+if (resp.status !== 200) throw new Error(`Kart Analytics-server gaf foutcode ${resp.status}.`);
 let content = resp.content;
 if (typeof content === "string") {
 try {
