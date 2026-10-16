@@ -1,4 +1,4 @@
-const KART_CARD_VERSION = "4.1.0";
+const KART_CARD_VERSION = "4.1.1";
 const FOLLOW_STORE = "kart-card-follows";
 const KNOWN_STORE = "kart-card-known";
 const ARCHIVE_KEY = "kart_card_archive";
@@ -171,10 +171,35 @@ this._uploadArchive();
 // eerder bewaarde SMS-gegevens één keer naar je eigen server sturen
 async _uploadArchive() {
 const A = this._archive;
-if (!A || A.uploaded || this._kaViaHA()) return;
+if (!A || A.uploaded || this._uploading) return;
 if (!Object.keys(A.heats || {}).length && !Object.keys(A.rankings || {}).length) return;
+const body = JSON.stringify({ heats: A.heats, rankings: A.rankings });
+if (this._kaViaHA()) {
+// via Home Assistant in kleine stukjes (base64, URL-veilig)
+this._uploading = true;
 try {
-const r = await fetch(`${this._kaBase()}/api/import-archive`, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ heats: A.heats, rankings: A.rankings }) });
+const bytes = new TextEncoder().encode(body);
+let bin = "";
+for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+const b64 = btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const size = 3000, n = Math.ceil(b64.length / size), u = Math.random().toString(36).slice(2, 12);
+let last = null;
+for (let i = 0; i < n; i++) last = await this._kaFetch(`import-chunk?u=${u}&i=${i}&n=${n}&d=${b64.slice(i * size, (i + 1) * size)}`);
+if (last && last.done) {
+A.uploaded = new Date().toISOString();
+this._saveArchive(500);
+this._heats = { data: null, error: null, promise: null };
+this._ranking = {};
+this._loadForTab();
+}
+} catch (_) {
+} finally {
+this._uploading = false;
+}
+return;
+}
+try {
+const r = await fetch(`${this._kaBase()}/api/import-archive`, { method: "POST", headers: { "Content-Type": "text/plain" }, body });
 if (r.ok) {
 A.uploaded = new Date().toISOString();
 this._saveArchive(500);

@@ -23,7 +23,7 @@ const CFG = {
   // rondes langzamer dan dit tellen nooit als schone ronde (volwassenen)
   cleanMaxMs: Number(process.env.CLEAN_MAX_MS || 40000),
 };
-const VERSION = "2.0.0";
+const VERSION = "2.0.1";
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -881,6 +881,10 @@ function csv(opts) {
   return [head, ...rows.map((r) => [new Date(r.ts).toISOString(), esc(r.heat_name), esc(r.kart), esc(r.driver), r.lap_no, r.lap_ms, r.pos ?? "", r.flag].join(","))].join("\n");
 }
 
+const uploads = new Map();
+setInterval(() => {
+  for (const [k, v] of uploads) if (Date.now() - v.at > 3600000) uploads.delete(k);
+}, 600000).unref();
 const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && req.url.split("?")[0] === "/api/import-archive") {
     let body = "";
@@ -933,6 +937,19 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/drivers") return send(res, 200, driverStats(opts));
     if (p.startsWith("/api/driver/")) return send(res, 200, driverDetail(decodeURIComponent(p.slice(12)), opts));
     if (p === "/api/heats") return send(res, 200, heatList(opts));
+    if (p === "/api/import-chunk") {
+      // archief in stukjes via GET (Home Assistant via Nabu Casa kan geen POST doen)
+      const u = String(P.get("u") || ""), i = Number(P.get("i")), n = Number(P.get("n"));
+      if (!/^[a-z0-9]{6,40}$/i.test(u) || !(n > 0 && n < 5000) || !(i >= 0 && i < n)) return send(res, 400, { error: "ongeldig" });
+      const up = uploads.get(u) || { n, parts: new Array(n), at: Date.now() };
+      up.parts[i] = String(P.get("d") || "");
+      uploads.set(u, up);
+      if (up.parts.filter((x) => x != null).length < n) return send(res, 200, { ok: true, got: i });
+      uploads.delete(u);
+      const b64 = up.parts.join("").replace(/-/g, "+").replace(/_/g, "/");
+      const json = Buffer.from(b64, "base64").toString("utf8");
+      return send(res, 200, { done: true, ...importArchive(JSON.parse(json)) });
+    }
     if (p === "/api/myheats") return send(res, 200, personalHeats((P.get("names") || "").split("|"), (P.get("follow") || "").split("|").filter(Boolean)));
     if (p.startsWith("/api/heatfull/")) return send(res, 200, heatFull(decodeURIComponent(p.slice(14))));
     if (p === "/api/records") return send(res, 200, smsRecords(P.get("group") || "117858", P.get("period") || "ever"));
