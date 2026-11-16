@@ -1,7 +1,7 @@
 /*
  * Kart Analytics – logger + backend
  *
- * - Luistert 24/7 naar de live timing van SMS-Timing (WebSocket) en slaat elke ronde op in SQLite.
+ * - Luistert 24/7 naar de live timing van SMS-Timing (Assen) en Apex Timing (Emmen) en slaat elke ronde op in SQLite.
  * - Biedt een API en een analysescherm (public/index.html) op http://<server>:PORT
  *
  * Geen externe pakketten: alleen ingebouwde Node.js-modules (Node 22.13+ / 24).
@@ -12,6 +12,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
+const { createApexLogger } = require("./apex.js");
 
 const CFG = {
   port: Number(process.env.PORT || 8095),
@@ -22,8 +23,18 @@ const CFG = {
   watchdogMs: Number(process.env.WATCHDOG_MS || 90000),
   // rondes langzamer dan dit tellen nooit als schone ronde (volwassenen)
   cleanMaxMs: Number(process.env.CLEAN_MAX_MS || 40000),
+  // tweede baan: Karting Emmen via Apex Timing (configPort 10460, wss op poort + 3)
+  apexUrl: process.env.APEX_URL || "wss://live-data.apex-timing.com:10463/",
+  emmen: (process.env.EMMEN || "true") !== "false",
 };
-const VERSION = "2.0.3";
+const VERSION = "2.1.0";
+
+// banen; elke heat hoort bij één baan (kolom heats.track)
+const TRACKS = {
+  assen: { name: "Kart en Fun Fabriek (Assen)", cleanMaxMs: CFG.cleanMaxMs },
+  emmen: { name: "Karting Emmen", cleanMaxMs: Number(process.env.CLEAN_MAX_MS_EMMEN || 0) },
+};
+const trackOf = (t) => (TRACKS[t] ? t : "assen");
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -64,10 +75,14 @@ CREATE INDEX IF NOT EXISTS laps_ts ON laps(ts);
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS people (key TEXT PRIMARY KEY, name TEXT, person_id TEXT NOT NULL, seen INTEGER);
 `);
+try {
+  db.exec("ALTER TABLE heats ADD COLUMN track TEXT NOT NULL DEFAULT 'assen'");
+} catch (_) {}
+db.exec("CREATE INDEX IF NOT EXISTS heats_track ON heats(track)");
 
 const q = {
   heatByKey: db.prepare("SELECT id FROM heats WHERE key = ?"),
-  heatInsert: db.prepare("INSERT INTO heats (key, name, heat_no, grp, sched_ts, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?)"),
+  heatInsert: db.prepare("INSERT INTO heats (key, name, heat_no, grp, sched_ts, first_seen, last_seen, track) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"),
   heatSeen: db.prepare("UPDATE heats SET last_seen = ? WHERE id = ?"),
   lapInsert: db.prepare(
     "INSERT OR IGNORE INTO laps (heat_id, ts, participant, driver, kart, lap_no, lap_ms, pos) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -88,7 +103,8 @@ const live = {
   reconnects: 0,
 };
 const seen = new Map(); // heatKey|participant -> last lap number
-let currentHeat = null; // { key, id }
+// huidige heat per baan; Emmen-heats krijgen "emmen|" voor de sleutel
+const heatSrc = { assen: { prefix: "", track: "assen", cur: null }, emmen: { prefix: "emmen|", track: "emmen", cur: null } };
 
 function parseHeatName(name) {
   const s = String(name || "");
@@ -103,9 +119,10 @@ function parseHeatName(name) {
  */
 const HEAT_GAP_MS = 20 * 60000;
 const heatLastSeen = db.prepare("SELECT id, key, last_seen FROM heats WHERE key = ? OR key LIKE ? ORDER BY id DESC LIMIT 1");
-function heatId(msg, now) {
-  const name = String(msg.N || "").trim() || "Onbekend";
-  const base = `${dayKey(now)}|${name}`;
+function heatId(rawName, now, src = heatSrc.assen, schedTs = null) {
+  const name = String(rawName || "").trim() || "Onbekend";
+  const base = `${src.prefix}${dayKey(now)}|${name}`;
+  const currentHeat = src.cur;
   if (currentHeat && currentHeat.base === base && now - currentHeat.last < HEAT_GAP_MS) {
     currentHeat.last = now;
     if (now - currentHeat.saved > 10000) {
@@ -118,15 +135,15 @@ function heatId(msg, now) {
   if (!row || now - Number(row.last_seen) >= HEAT_GAP_MS) {
     const key = row ? `${base}#${now}` : base;
     const { heatNo, grp } = parseHeatName(name);
-    const r = q.heatInsert.run(key, name, heatNo, grp, Number(msg.T) || null, now, now);
+    const r = q.heatInsert.run(key, name, heatNo, grp, schedTs, now, now, src.track);
     row = { id: Number(r.lastInsertRowid) };
     log("nieuwe heat", key);
   } else {
     q.heatSeen.run(now, row.id);
   }
-  currentHeat = { base, id: Number(row.id), last: now, saved: now };
+  src.cur = { base, id: Number(row.id), last: now, saved: now };
   if (seen.size > 5000) seen.clear();
-  return currentHeat.id;
+  return src.cur.id;
 }
 
 function handleMessage(raw, now = Date.now()) {
@@ -140,7 +157,7 @@ function handleMessage(raw, now = Date.now()) {
   live.lastSnapshot = msg;
   const drivers = Array.isArray(msg.D) ? msg.D : [];
   if (!drivers.length) return 0;
-  const hid = heatId(msg, now);
+  const hid = heatId(msg.N, now, heatSrc.assen, Number(msg.T) || null);
   let added = 0;
   for (const d of drivers) {
     const pid = Number(d.D);
@@ -236,6 +253,19 @@ function startWatchdog() {
   }, 15000);
 }
 
+/* Karting Emmen (Apex Timing): zelfde tabellen, heats met track = 'emmen' */
+const apex = createApexLogger({
+  url: CFG.apexUrl,
+  log,
+  onLap(l) {
+    const hid = heatId(l.session, l.now, heatSrc.emmen);
+    const r = q.lapInsert.run(hid, l.now, l.participant, l.driver, l.kart, l.lapNo, l.lapMs, l.pos);
+    if (r.changes) cacheBust();
+    return r.changes;
+  },
+});
+const loggerOf = (track) => (track === "emmen" ? apex.live : live);
+
 /* ------------------------------------------------------------------ */
 /* Analyse                                                             */
 /* ------------------------------------------------------------------ */
@@ -270,18 +300,19 @@ function cacheBust() {
  *  - slow:   ronde ver boven het eigen niveau in die heat (spin, botsing)
  *  - clean:  geen van bovenstaande
  */
-function loadLaps({ since = 0, until = 0, grp = "Volwassenen" } = {}) {
-  const key = `${since}|${until}|${grp}`;
+function loadLaps({ since = 0, until = 0, grp = "Volwassenen", track = "assen" } = {}) {
+  const key = `${track}|${since}|${until}|${grp}`;
   if (cache.data && cache.key === key && Date.now() - cache.at < 60000) return cache.data;
   const rows = db
     .prepare(
       `SELECT l.id, l.heat_id, l.ts, l.participant, l.driver, l.kart, l.lap_no, l.lap_ms, l.pos,
               h.name AS heat_name, h.heat_no, h.grp, h.sched_ts
        FROM laps l JOIN heats h ON h.id = l.heat_id
-       WHERE l.ts >= ? AND l.ts < ? AND (? = 'Alle' OR h.grp = ?)
+       WHERE h.track = ? AND l.ts >= ? AND l.ts < ? AND (? = 'Alle' OR h.grp = ?)
        ORDER BY l.ts`
     )
-    .all(since, until || 8.64e15, grp, grp);
+    .all(track, since, until || 8.64e15, grp, grp);
+  const cleanMax = TRACKS[track].cleanMaxMs;
 
   const byHeat = new Map();
   for (const r of rows) {
@@ -306,8 +337,8 @@ function loadLaps({ since = 0, until = 0, grp = "Volwassenen" } = {}) {
       const win = laps.filter((x) => Math.abs(x.ts - l.ts) <= 25000 && x.rel);
       const slowShare = win.length ? win.filter((x) => x.rel > 1.15).length / win.length : 0;
       l.flag = l.lap_no <= 1 ? "out" : win.length >= 3 && slowShare > 0.5 ? "yellow" : l.rel && l.rel > 1.12 ? "slow" : "clean";
-      // vaste grens: boven 40,0 s is geen schone ronde (niet bij kids)
-      if (l.flag === "clean" && l.grp !== "Kids" && l.lap_ms > CFG.cleanMaxMs) l.flag = "slow";
+      // vaste grens per baan (Assen: boven 40,0 s is geen schone ronde, niet bij kids)
+      if (l.flag === "clean" && cleanMax && l.grp !== "Kids" && l.lap_ms > cleanMax) l.flag = "slow";
     }
     const clean = laps.filter((l) => l.flag === "clean").map((l) => l.lap_ms);
     const hmed = median(clean);
@@ -326,7 +357,7 @@ function loadLaps({ since = 0, until = 0, grp = "Volwassenen" } = {}) {
  */
 let modelCache = { key: "", at: 0, data: null };
 function fitModel(opts) {
-  const key = `${opts.since || 0}|${opts.until || 0}|${opts.grp}`;
+  const key = `${opts.track || "assen"}|${opts.since || 0}|${opts.until || 0}|${opts.grp}`;
   if (modelCache.data && modelCache.key === key && Date.now() - modelCache.at < 60000) return modelCache.data;
   const rows = loadLaps(opts).filter((r) => r.flag === "clean" && r.lap_no >= 2 && r.driver && r.kart);
   const n = rows.length;
@@ -514,6 +545,7 @@ const scoreMs = (sc) => {
 };
 /** opgeslagen SMS-Timing-records (beste rondes van vóór de logger) samenvoegen met de eigen gegevens */
 function mergeRecords(list, opts) {
+  if ((opts.track || "assen") !== "assen") return list; // SMS-Timing-records zijn alleen van Assen
   const scg = { Volwassenen: "117858", Kids: "117860" }[opts.grp];
   const recs = db.prepare("SELECT rows FROM sms_records" + (scg ? " WHERE k LIKE ?" : "")).all(...(scg ? [`${scg}|%`] : []));
   const byKey = new Map(list.map((d) => [nameKey(d.driver), d]));
@@ -600,7 +632,8 @@ function heatList(opts) {
 }
 
 function heatDetail(id) {
-  const rows = loadLaps({ since: 0, grp: "Alle" }).filter((r) => r.heat_id === id);
+  const h = db.prepare("SELECT track FROM heats WHERE id = ?").get(id);
+  const rows = loadLaps({ since: 0, grp: "Alle", track: h ? h.track : "assen" }).filter((r) => r.heat_id === id);
   const p = new Map();
   for (const r of rows) {
     if (!p.has(r.participant)) p.set(r.participant, { driver: r.driver, kart: r.kart, laps: [] });
@@ -609,15 +642,19 @@ function heatDetail(id) {
   return { id, name: rows[0] ? rows[0].heat_name : "", participants: [...p.values()] };
 }
 
-function summary() {
-  const c = db.prepare("SELECT COUNT(*) n, MIN(ts) first, MAX(ts) last, COUNT(DISTINCT kart) karts, COUNT(DISTINCT driver) drivers FROM laps").get();
-  const h = db.prepare("SELECT COUNT(*) n FROM heats").get();
+function summary(track = "assen") {
+  const c = db
+    .prepare("SELECT COUNT(*) n, MIN(l.ts) first, MAX(l.ts) last, COUNT(DISTINCT l.kart) karts, COUNT(DISTINCT l.driver) drivers FROM laps l JOIN heats h ON h.id = l.heat_id WHERE h.track = ?")
+    .get(track);
+  const h = db.prepare("SELECT COUNT(*) n FROM heats WHERE track = ?").get(track);
   return {
     version: VERSION,
-    logger: { ...live, lastSnapshot: undefined },
+    track,
+    trackName: TRACKS[track].name,
+    logger: { ...loggerOf(track), lastSnapshot: undefined },
     totals: { laps: c.n, heats: h.n, karts: c.karts, drivers: c.drivers, first: c.first, last: c.last },
     dbSizeBytes: fs.existsSync(CFG.dbPath) ? fs.statSync(CFG.dbPath).size : 0,
-    photos: fs.existsSync(photoDir) && fs.readdirSync(photoDir).some((f) => f.endsWith(".jpg")),
+    photos: track === "assen" && fs.existsSync(photoDir) && fs.readdirSync(photoDir).some((f) => f.endsWith(".jpg")),
   };
 }
 
@@ -676,13 +713,14 @@ function refreshPeople() {
   return n;
 }
 
-function driverNumbers() {
+function driverNumbers(track = "assen") {
   const out = {};
-  const rank = driverStats({ since: 0, grp: "Volwassenen" }).filter((d) => d.best);
+  const rank = driverStats({ since: 0, grp: track === "assen" ? "Volwassenen" : "Alle", track }).filter((d) => d.best);
   rank.forEach((d, i) => {
     const k = nameKey(d.driver);
     if (k && !out[k]) out[k] = { sms: null, log: i + 1 };
   });
+  if (track !== "assen") return out;
   for (const r of db.prepare("SELECT key, ever_pos FROM people WHERE ever_pos IS NOT NULL").all()) {
     out[r.key] = { ...(out[r.key] || { log: null }), sms: r.ever_pos };
   }
@@ -765,7 +803,7 @@ function mergeSmsHeat(row) {
     return; // de logger had deze heat al (met alle deelnemers)
   }
   const { heatNo, grp } = parseHeatName(name);
-  const r = q.heatInsert.run(`sms|${row.session_id}`, name, heatNo, grp, start, start, start);
+  const r = q.heatInsert.run(`sms|${row.session_id}`, name, heatNo, grp, start, start, start, "assen");
   const hid = Number(r.lastInsertRowid);
   db.prepare("UPDATE heats SET sms_session = ? WHERE id = ?").run(String(row.session_id), hid);
   const parts = new Map((det.participants || []).map((p) => [String(p.id), p]));
@@ -825,10 +863,10 @@ function smsRecords(group, period) {
  * Heats van jou (alle SMS-heats + logger-heats onder jouw namen) en van gevolgde coureurs.
  * names = jouw namen, follow = namen van gevolgde coureurs (gescheiden door |)
  */
-function personalHeats(names, follow) {
+function personalHeats(names, follow, track = "assen") {
   const me = new Set(names.map(nameKey).filter(Boolean));
   const fol = new Map(follow.map((n) => [nameKey(n), n]).filter(([k]) => k));
-  const rows = loadLaps({ since: 0, grp: "Alle" });
+  const rows = loadLaps({ since: 0, grp: "Alle", track });
   const heats = new Map();
   for (const r of rows) {
     const k = nameKey(r.driver);
@@ -843,9 +881,9 @@ function personalHeats(names, follow) {
     if (r.lap_no > 1 && r.lap_ms > 0 && (!w.best || r.lap_ms < w.best)) w.best = r.lap_ms;
     if (r.lap_no >= w.lastLap) { w.lastLap = r.lap_no; w.pos = r.pos; }
   }
-  // SMS-heats zijn altijd van jou (ook als de naam anders gespeld is)
+  // SMS-heats zijn altijd van jou (ook als de naam anders gespeld is); alleen Assen
   const smsMap = new Map(db.prepare("SELECT id, sms_session FROM heats WHERE sms_session IS NOT NULL").all().map((x) => [x.id, x.sms_session]));
-  for (const row of db.prepare("SELECT * FROM sms_heats WHERE length(session_id) >= 6").all()) {
+  for (const row of track === "assen" ? db.prepare("SELECT * FROM sms_heats WHERE length(session_id) >= 6").all() : []) {
     const meta = row.meta ? JSON.parse(row.meta) : {};
     const hid = [...smsMap].find(([, s]) => s === String(row.session_id));
     const id = hid ? hid[0] : null;
@@ -950,12 +988,18 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://x");
     const P = url.searchParams;
-    const opts = { since: sinceFrom(P), until: Number(P.get("until")) || 0, grp: P.get("group") || "Volwassenen" };
+    const track = trackOf(P.get("track"));
+    // Emmen kent geen indeling volwassenen/kids: daar altijd alle heats
+    const opts = { since: sinceFrom(P), until: Number(P.get("until")) || 0, grp: track === "assen" ? P.get("group") || "Volwassenen" : "Alle", track };
     const p = url.pathname;
-    if (p === "/api/summary") return send(res, 200, summary());
-    if (p === "/api/live") return send(res, 200, { state: live.state, at: live.lastMessage, snapshot: liveWithPeople() });
-    if (p === "/api/people") return send(res, 200, peopleMap());
-    if (p === "/api/numbers") return send(res, 200, driverNumbers());
+    if (p === "/api/tracks") return send(res, 200, Object.entries(TRACKS).map(([id, t]) => ({ id, name: t.name })));
+    if (p === "/api/summary") return send(res, 200, summary(track));
+    if (p === "/api/live") {
+      if (track === "emmen") return send(res, 200, { state: apex.live.state, at: apex.live.lastLap, snapshot: apex.snapshot() });
+      return send(res, 200, { state: live.state, at: live.lastMessage, snapshot: liveWithPeople() });
+    }
+    if (p === "/api/people") return send(res, 200, track === "assen" ? peopleMap() : {});
+    if (p === "/api/numbers") return send(res, 200, driverNumbers(track));
     if (p === "/api/karts") return send(res, 200, kartStats(opts));
     if (p === "/api/model") return send(res, 200, modelSummary(opts));
     if (p.startsWith("/api/kart/")) return send(res, 200, kartDetail(decodeURIComponent(p.slice(10)), opts));
@@ -975,7 +1019,7 @@ const server = http.createServer(async (req, res) => {
       const json = Buffer.from(b64, "base64").toString("utf8");
       return send(res, 200, { done: true, ...importArchive(JSON.parse(json)) });
     }
-    if (p === "/api/myheats") return send(res, 200, personalHeats((P.get("names") || "").split("|"), (P.get("follow") || "").split("|").filter(Boolean)));
+    if (p === "/api/myheats") return send(res, 200, personalHeats((P.get("names") || "").split("|"), (P.get("follow") || "").split("|").filter(Boolean), track));
     if (p.startsWith("/api/heatfull/")) return send(res, 200, heatFull(decodeURIComponent(p.slice(14))));
     if (p === "/api/records") return send(res, 200, smsRecords(P.get("group") || "117858", P.get("period") || "ever"));
     if (p === "/api/sms") return send(res, 200, { heats: db.prepare("SELECT COUNT(*) n FROM sms_heats").get().n, records: db.prepare("SELECT COUNT(*) n FROM sms_records").get().n });
@@ -1001,12 +1045,14 @@ if (require.main === module) {
   server.listen(CFG.port, () => log(`Kart Analytics ${VERSION} op poort ${CFG.port}, database ${CFG.dbPath}`));
   connect();
   startWatchdog();
+  if (CFG.emmen) apex.start();
   refreshPeople();
   const stop = () => {
     log("afsluiten");
     try {
       ws && ws.close();
     } catch (_) {}
+    apex.stop();
     db.close();
     process.exit(0);
   };
@@ -1014,4 +1060,4 @@ if (require.main === module) {
   process.on("SIGINT", stop);
 }
 
-module.exports = { importArchive, personalHeats, heatFull, smsRecords, handleMessage, kartStats, kartDetail, driverStats, driverDetail, conditions, heatList, heatDetail, summary, db };
+module.exports = { apex, importArchive, personalHeats, heatFull, smsRecords, handleMessage, kartStats, kartDetail, driverStats, driverDetail, conditions, heatList, heatDetail, summary, db };

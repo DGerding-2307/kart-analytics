@@ -1,8 +1,8 @@
 # Kart Analytics
 
-Logt 24/7 elke ronde van de live timing van **Kart en Fun Fabriek (Assen)** en laat er analyses op los: per kart, per coureur, per heat en per tijdstip.
+Logt 24/7 elke ronde van de live timing van **Kart en Fun Fabriek (Assen)** en **Karting Emmen** en laat er analyses op los: per kart, per coureur, per heat en per tijdstip. Rechtsboven in het scherm kies je met een keuzelijst welke baan je bekijkt.
 
-- **Logger** – luistert dag en nacht naar de openbare live timing (SMS-Timing WebSocket). Geen inloggegevens nodig.
+- **Logger** – luistert dag en nacht naar de openbare live timing van beide banen: Assen via SMS-Timing, Emmen via [Apex Timing](https://live.apex-timing.com/karting-emmen/) (`apex.js`). Geen inloggegevens nodig.
 - **Database** – alle rondes in één SQLite-bestand (`data/kart.db`).
 - **Analysescherm** – F1-stijl dashboard op `http://<server>:8095`.
 - **API** – JSON-eindpunten, bijvoorbeeld voor Home Assistant.
@@ -38,10 +38,11 @@ De map `/mnt/user/appdata/kart-analytics/data` bevat de database. Die blijft sta
 
 ## API
 
-Alle eindpunten accepteren `?period=7d|30d|90d|365d|all` en `?group=Volwassenen|Kids|Alle`.
+Alle eindpunten accepteren `?track=assen|emmen` (standaard `assen`), `?period=7d|30d|90d|365d|all` en `?group=Volwassenen|Kids|Alle` (alleen Assen; Emmen toont altijd alle heats).
 
 | Eindpunt | |
 |---|---|
+| `/api/tracks` | lijst van banen |
 | `/api/summary` | status logger, totalen |
 | `/api/live` | laatste live bericht |
 | `/api/karts` | statistieken per kart |
@@ -59,9 +60,16 @@ Alle eindpunten accepteren `?period=7d|30d|90d|365d|all` en `?group=Volwassenen|
 | `PORT` | `8095` | poort van het dashboard |
 | `DB_PATH` | `/data/kart.db` | database |
 | `RESOURCE_KEY` | `26932@kartenfunfabriek` | baan in SMS-Timing |
+| `EMMEN` | `true` | Karting Emmen ook loggen |
+| `APEX_URL` | `wss://live-data.apex-timing.com:10463/` | live timing Emmen |
+| `CLEAN_MAX_MS_EMMEN` | `0` | tijdgrens schone ronde in Emmen (0 = geen) |
 | `AUTO_UPDATE` | `true` | elke `UPDATE_INTERVAL_MIN` minuten nieuwe versie ophalen |
 | `UPDATE_INTERVAL_MIN` | `60` | |
 
 ## Privacy
 
-Deze repository is openbaar. Er staan **geen** persoonlijke sleutels of tokens in, en die horen er ook nooit in. De logger gebruikt alleen de openbare live timing.
+Deze repository is openbaar. Er staan **geen** persoonlijke sleutels of tokens in, en die horen er ook nooit in. De loggers gebruiken alleen de openbare live timing.
+
+## Hoe Emmen wordt gelogd
+
+Apex Timing stuurt geen losse rondes maar wijzigingen in de tijdentabel. Een ronde wordt opgeslagen zodra bij een coureur het aantal rondes omhoog gaat en de laatste rondetijd verandert. De tabel die direct na het verbinden binnenkomt, geldt als nulpunt: rondes die toen al gereden waren worden niet opgeslagen. Alle rondes staan in dezelfde database als Assen; elke heat heeft een kolom `track` (`assen` of `emmen`).

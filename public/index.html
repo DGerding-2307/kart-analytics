@@ -120,6 +120,7 @@ td{border-bottom:1px solid #22222d}
   <div class="logo">KART<span>/</span>ANALYTICS</div>
   <div class="status"><span id="dot" class="dot"></span><span id="stxt">laden…</span></div>
   <div class="filters">
+    <select id="track" title="Welke baan"><option value="assen">Assen · Kart en Fun Fabriek</option><option value="emmen">Emmen · Karting Emmen</option></select>
     <select id="period"><option value="7d">7 dagen</option><option value="30d">30 dagen</option><option value="90d">90 dagen</option><option value="365d">1 jaar</option><option value="all" selected>Alles</option></select>
     <select id="group"><option>Volwassenen</option><option>Kids</option><option>Alle</option></select>
     <button id="csv" title="Alle rondes downloaden als CSV">⬇ CSV</button>
@@ -157,13 +158,19 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem("ka_" + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
   set(k, v) { try { localStorage.setItem("ka_" + k, JSON.stringify(v)); } catch (_) {} },
 };
-const state = { view: "overview", arg: null, period: store.get("period", "all"), group: store.get("group", "Volwassenen"), sort: {} };
+const state = { view: "overview", arg: null, track: store.get("track", "assen"), period: store.get("period", "all"), group: store.get("group", "Volwassenen"), sort: {} };
+if (!["assen", "emmen"].includes(state.track)) state.track = "assen";
+$("#track").value = state.track;
 $("#period").value = state.period;
 $("#group").value = state.group;
+// Emmen kent geen indeling volwassenen/kids
+const syncGroup = () => { $("#group").style.display = state.track === "assen" ? "" : "none"; };
+syncGroup();
+const T = () => `track=${state.track}`;
 
 async function api(p, extra = "") {
   const sep = p.includes("?") ? "&" : "?";
-  const r = await fetch(`api/${p}${sep}period=${state.period}&group=${encodeURIComponent(state.group)}${extra}`);
+  const r = await fetch(`api/${p}${sep}${T()}&period=${state.period}&group=${encodeURIComponent(state.group)}${extra}`);
   if (!r.ok) throw new Error(r.status);
   return r.json();
 }
@@ -265,7 +272,7 @@ function histogram(values, opts = {}) {
 }
 const median = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const FLAGC = { clean: "#00D26A", slow: "#FFD12E", yellow: "#FF8A00", out: "#666680" };
-const FLAGN = { clean: "schoon", slow: "langzaam (spin/botsing of > 40,0 s)", yellow: "gele vlag / neutralisatie", out: "uitrijronde" };
+const FLAGN = { clean: "schoon", slow: "langzaam (spin/botsing of boven de tijdgrens)", yellow: "gele vlag / neutralisatie", out: "uitrijronde" };
 const flagLegend = () => `<div class="legend">${Object.keys(FLAGC).map((k) => `<span><i style="background:${FLAGC[k]}"></i>${FLAGN[k]}</span>`).join("")}</div>`;
 const PALETTE = ["#E10600", "#3B82F6", "#00D26A", "#FFD12E", "#A855F7", "#FF8A00", "#22D3EE", "#F472B6", "#94A3B8", "#84CC16", "#FB7185", "#FDE68A"];
 
@@ -313,7 +320,7 @@ function who(name, big) {
 }
 async function loadMeta() {
   try {
-    const [n, p] = await Promise.all([fetch("api/numbers").then((r) => r.json()), fetch("api/people").then((r) => r.json())]);
+    const [n, p] = await Promise.all([fetch("api/numbers?" + T()).then((r) => r.json()), fetch("api/people?" + T()).then((r) => r.json())]);
     meta.numbers = n || {}; meta.people = p || {};
   } catch (_) {}
 }
@@ -326,11 +333,12 @@ window.toggleFollow = (n) => { const f = follows(); store.set("follow", f.includ
 let summary = null;
 async function refreshStatus() {
   try {
-    summary = await (await fetch("api/summary")).json();
+    summary = await (await fetch("api/summary?" + T())).json();
     const st = summary.logger.state;
     const on = st === "open" && summary.logger.lastMessage && Date.now() - summary.logger.lastMessage < 120000;
     $("#dot").className = "dot " + (on ? "on" : st === "open" ? "" : "off");
-    $("#stxt").textContent = on ? `logger live · ${summary.totals.laps.toLocaleString("nl-NL")} rondes` : st === "open" ? "verbonden · geen heat bezig" : `logger: ${st}`;
+    const baan = state.track === "emmen" ? "Emmen" : "Assen";
+    $("#stxt").textContent = `${baan} · ` + (on ? `logger live · ${summary.totals.laps.toLocaleString("nl-NL")} rondes` : st === "open" ? "verbonden · geen heat bezig" : `logger: ${st}`);
   } catch (_) {
     $("#dot").className = "dot off";
     $("#stxt").textContent = "server niet bereikbaar";
@@ -339,7 +347,7 @@ async function refreshStatus() {
 
 /* ---------------- views ---------------- */
 async function vOverview() {
-  const [k, d, h, live] = await Promise.all([api("karts"), api("drivers"), api("heats"), fetch("api/live").then((r) => r.json())]);
+  const [k, d, h, live] = await Promise.all([api("karts"), api("drivers"), api("heats"), fetch("api/live?" + T()).then((r) => r.json())]);
   const t = summary ? summary.totals : {};
   const ranked = k.karts.filter((x) => x.driverCorrectedMs != null || x.heatIndexMs != null);
   const idx = (x) => x.driverCorrectedMs ?? x.heatIndexMs;
@@ -551,9 +559,10 @@ async function vConditions() {
 
 function vAbout() {
   return `<div class="card"><h2>Hoe werkt het?</h2><div class="hint" style="font-size:15px;max-width:820px">
-  <p><b>Logger.</b> De server luistert dag en nacht naar de openbare live timing van Kart en Fun Fabriek en slaat elke voltooide ronde op: tijd, coureur, kart, rondenummer en positie. Hiervoor zijn geen inloggegevens nodig. Valt de verbinding weg, dan maakt hij vanzelf opnieuw verbinding.</p>
-  <p><b>Schone rondes.</b> Niet elke ronde zegt iets over de kart. Daarom wordt elke ronde gemarkeerd: <span style="color:${FLAGC.out}">uitrijronde</span> (ronde 1), <span style="color:${FLAGC.yellow}">gele vlag</span> (meer dan de helft van het veld rijdt tegelijk &gt;15% langzamer), <span style="color:${FLAGC.slow}">langzaam</span> (&gt;12% boven het eigen niveau in die heat — spin of botsing — of langzamer dan 40,0 s) en <span style="color:${FLAGC.clean}">schoon</span>. Statistieken gebruiken alleen schone rondes.</p>
-  <p><b>Regressie.</b> Elke schone ronde wordt verklaard als: <i>gemiddelde + niveau van de coureur + effect van de kart + effect van het rondenummer (banden opwarmen)</i>. Het model schat al die effecten tegelijk. Daardoor kun je karts eerlijk vergelijken (los van wie erin reed) en coureurs eerlijk vergelijken (los van welke kart ze kregen). Weer en baanomstandigheden tellen niet mee: het is een indoorbaan.</p>
+  <p><b>Banen.</b> Kies rechtsboven de baan: <b>Assen</b> (Kart en Fun Fabriek, via SMS-Timing) of <b>Emmen</b> (Karting Emmen, buitenbaan van 1084 m, via Apex Timing). Beide banen worden tegelijk gelogd en apart geanalyseerd. In Emmen is er geen indeling volwassenen/kids en geen vaste tijdgrens voor schone rondes.</p>
+  <p><b>Logger.</b> De server luistert dag en nacht naar de openbare live timing van beide banen en slaat elke voltooide ronde op: tijd, coureur, kart, rondenummer en positie. Hiervoor zijn geen inloggegevens nodig. Valt de verbinding weg, dan maakt hij vanzelf opnieuw verbinding.</p>
+  <p><b>Schone rondes.</b> Niet elke ronde zegt iets over de kart. Daarom wordt elke ronde gemarkeerd: <span style="color:${FLAGC.out}">uitrijronde</span> (ronde 1), <span style="color:${FLAGC.yellow}">gele vlag</span> (meer dan de helft van het veld rijdt tegelijk &gt;15% langzamer), <span style="color:${FLAGC.slow}">langzaam</span> (&gt;12% boven het eigen niveau in die heat — spin of botsing — of in Assen langzamer dan 40,0 s) en <span style="color:${FLAGC.clean}">schoon</span>. Statistieken gebruiken alleen schone rondes.</p>
+  <p><b>Regressie.</b> Elke schone ronde wordt verklaard als: <i>gemiddelde + niveau van de coureur + effect van de kart + effect van het rondenummer (banden opwarmen)</i>. Het model schat al die effecten tegelijk. Daardoor kun je karts eerlijk vergelijken (los van wie erin reed) en coureurs eerlijk vergelijken (los van welke kart ze kregen). Weer en baanomstandigheden tellen niet mee: in Assen is het een indoorbaan; in Emmen (buiten) kan regen de cijfers beïnvloeden.</p>
   <p><b>Rating</b> = de verwachte rondetijd van een coureur in een gemiddelde kart, op een warme ronde. De coureursranglijst is daarop gesorteerd. <b>Kart-effect</b> = hoeveel seconden per ronde een kart sneller (−) of langzamer (+) is dan gemiddeld. Met weinig rondes trekt het model een waarde naar het gemiddelde, zodat één toevallig goede heat niet meteen bovenaan staat. Reken op een paar weken data voor betrouwbare cijfers.</p>
   <p><b>Beperking.</b> De live timing stuurt alleen de laatste rondetijd. Als de server precies tijdens een ronde offline is, mist die ronde — de rest van de heat wordt gewoon opgeslagen.</p>
   <p class="muted">Versie ${summary ? esc(summary.version) : ""} · database ${summary ? (summary.dbSizeBytes / 1048576).toFixed(1) + " MB" : ""}</p>
@@ -586,8 +595,16 @@ function fromHash() {
 window.addEventListener("popstate", () => { fromHash(); render(); });
 $("#nav").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { state.sort = {}; go(b.dataset.v); } });
 $("#period").onchange = (e) => { state.period = e.target.value; store.set("period", state.period); render(); };
+$("#track").onchange = async (e) => {
+  state.track = e.target.value; store.set("track", state.track); syncGroup();
+  // een kart- of coureurspagina van de andere baan bestaat niet: terug naar het overzicht
+  if (state.arg != null) go("overview");
+  await Promise.all([refreshStatus(), loadMeta()]);
+  meta.photos = !!(summary && summary.photos);
+  render();
+};
 $("#group").onchange = (e) => { state.group = e.target.value; store.set("group", state.group); render(); };
-$("#csv").onclick = () => { location.href = `api/export.csv?period=${state.period}&group=${encodeURIComponent(state.group)}`; };
+$("#csv").onclick = () => { location.href = `api/export.csv?${T()}&period=${state.period}&group=${encodeURIComponent(state.group)}`; };
 window.store = store;
 fromHash();
 Promise.all([refreshStatus(), loadMeta()]).then(() => { meta.photos = !!(summary && summary.photos); render(); });
