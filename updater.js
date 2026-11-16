@@ -33,12 +33,14 @@ function start() {
 function restart() {
   if (!child) return start();
   restarting = true;
-  child.once("exit", () => {
+  // alleen de oude server afschieten als die na 15 s nog draait (niet de nieuwe die dan al loopt)
+  const old = child;
+  old.once("exit", () => {
     restarting = false;
     start();
   });
-  child.kill("SIGTERM");
-  setTimeout(() => child && child.kill("SIGKILL"), 15000);
+  old.kill("SIGTERM");
+  setTimeout(() => old.exitCode === null && old.signalCode === null && old.kill("SIGKILL"), 15000);
 }
 
 const git = (...args) => execFileSync("git", ["-C", DIR, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
