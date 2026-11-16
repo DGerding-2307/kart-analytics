@@ -1,7 +1,7 @@
 /*
  * Kart Analytics – logger + backend
  *
- * - Luistert 24/7 naar de live timing van SMS-Timing (Assen) en Apex Timing (Emmen) en slaat elke ronde op in SQLite.
+ * - Luistert 24/7 naar de live timing van SMS-Timing (Assen) en Apex Timing (Emmen, Lelystad) en slaat elke ronde op in SQLite.
  * - Biedt een API en een analysescherm (public/index.html) op http://<server>:PORT
  *
  * Geen externe pakketten: alleen ingebouwde Node.js-modules (Node 22.13+ / 24).
@@ -23,17 +23,19 @@ const CFG = {
   watchdogMs: Number(process.env.WATCHDOG_MS || 90000),
   // rondes langzamer dan dit tellen nooit als schone ronde (volwassenen)
   cleanMaxMs: Number(process.env.CLEAN_MAX_MS || 40000),
-  // tweede baan: Karting Emmen via Apex Timing (configPort 10460, wss op poort + 3)
-  apexUrl: process.env.APEX_URL || "wss://live-data.apex-timing.com:10463/",
-  emmen: (process.env.EMMEN || "true") !== "false",
 };
-const VERSION = "2.1.0";
+const VERSION = "2.2.0";
 
 // banen; elke heat hoort bij één baan (kolom heats.track)
+// Apex Timing: wss-poort = configPort uit live.apex-timing.com/<baan>/javascript/config.js + 3
+const env = (k, d) => process.env[k] ?? d;
 const TRACKS = {
   assen: { name: "Kart en Fun Fabriek (Assen)", cleanMaxMs: CFG.cleanMaxMs },
-  emmen: { name: "Karting Emmen", cleanMaxMs: Number(process.env.CLEAN_MAX_MS_EMMEN || 0) },
+  emmen: { name: "Karting Emmen", apex: env("APEX_URL", "wss://live-data.apex-timing.com:10463/"), cleanMaxMs: Number(env("CLEAN_MAX_MS_EMMEN", 0)) },
+  lelystad: { name: "Kartcentrum Lelystad", apex: env("APEX_URL_LELYSTAD", "wss://live-data.apex-timing.com:8383/"), cleanMaxMs: Number(env("CLEAN_MAX_MS_LELYSTAD", 0)) },
 };
+// een Apex-baan uitzetten: EMMEN=false / LELYSTAD=false
+const apexTracks = Object.keys(TRACKS).filter((t) => TRACKS[t].apex && env(t.toUpperCase(), "true") !== "false");
 const trackOf = (t) => (TRACKS[t] ? t : "assen");
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -103,8 +105,8 @@ const live = {
   reconnects: 0,
 };
 const seen = new Map(); // heatKey|participant -> last lap number
-// huidige heat per baan; Emmen-heats krijgen "emmen|" voor de sleutel
-const heatSrc = { assen: { prefix: "", track: "assen", cur: null }, emmen: { prefix: "emmen|", track: "emmen", cur: null } };
+// huidige heat per baan; heats buiten Assen krijgen "<baan>|" voor de sleutel (bv. "emmen|")
+const heatSrc = Object.fromEntries(Object.keys(TRACKS).map((t) => [t, { prefix: t === "assen" ? "" : `${t}|`, track: t, cur: null }]));
 
 function parseHeatName(name) {
   const s = String(name || "");
@@ -253,18 +255,25 @@ function startWatchdog() {
   }, 15000);
 }
 
-/* Karting Emmen (Apex Timing): zelfde tabellen, heats met track = 'emmen' */
-const apex = createApexLogger({
-  url: CFG.apexUrl,
-  log,
-  onLap(l) {
-    const hid = heatId(l.session, l.now, heatSrc.emmen);
-    const r = q.lapInsert.run(hid, l.now, l.participant, l.driver, l.kart, l.lapNo, l.lapMs, l.pos);
-    if (r.changes) cacheBust();
-    return r.changes;
-  },
-});
-const loggerOf = (track) => (track === "emmen" ? apex.live : live);
+/* Apex Timing-banen (Emmen, Lelystad): zelfde tabellen, heats met track = '<baan>' */
+const apex = Object.fromEntries(
+  apexTracks.map((t) => [
+    t,
+    createApexLogger({
+      id: t,
+      url: TRACKS[t].apex,
+      log,
+      onLap(l) {
+        const hid = heatId(l.session, l.now, heatSrc[t]);
+        const r = q.lapInsert.run(hid, l.now, l.participant, l.driver, l.kart, l.lapNo, l.lapMs, l.pos);
+        if (r.changes) cacheBust();
+        return r.changes;
+      },
+    }),
+  ])
+);
+const OFF = { state: "uit", connectedSince: null, lastMessage: null, lapsLogged: 0, reconnects: 0 };
+const loggerOf = (track) => (track === "assen" ? live : apex[track] ? apex[track].live : OFF);
 
 /* ------------------------------------------------------------------ */
 /* Analyse                                                             */
@@ -989,13 +998,13 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://x");
     const P = url.searchParams;
     const track = trackOf(P.get("track"));
-    // Emmen kent geen indeling volwassenen/kids: daar altijd alle heats
+    // alleen Assen kent de indeling volwassenen/kids: elders altijd alle heats
     const opts = { since: sinceFrom(P), until: Number(P.get("until")) || 0, grp: track === "assen" ? P.get("group") || "Volwassenen" : "Alle", track };
     const p = url.pathname;
     if (p === "/api/tracks") return send(res, 200, Object.entries(TRACKS).map(([id, t]) => ({ id, name: t.name })));
     if (p === "/api/summary") return send(res, 200, summary(track));
     if (p === "/api/live") {
-      if (track === "emmen") return send(res, 200, { state: apex.live.state, at: apex.live.lastLap, snapshot: apex.snapshot() });
+      if (track !== "assen") return send(res, 200, apex[track] ? { state: apex[track].live.state, at: apex[track].live.lastLap, snapshot: apex[track].snapshot() } : { state: "uit", at: null, snapshot: null });
       return send(res, 200, { state: live.state, at: live.lastMessage, snapshot: liveWithPeople() });
     }
     if (p === "/api/people") return send(res, 200, track === "assen" ? peopleMap() : {});
@@ -1045,14 +1054,14 @@ if (require.main === module) {
   server.listen(CFG.port, () => log(`Kart Analytics ${VERSION} op poort ${CFG.port}, database ${CFG.dbPath}`));
   connect();
   startWatchdog();
-  if (CFG.emmen) apex.start();
+  for (const a of Object.values(apex)) a.start();
   refreshPeople();
   const stop = () => {
     log("afsluiten");
     try {
       ws && ws.close();
     } catch (_) {}
-    apex.stop();
+    for (const a of Object.values(apex)) a.stop();
     db.close();
     process.exit(0);
   };

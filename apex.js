@@ -1,5 +1,5 @@
 /*
- * Kart Analytics – logger voor Apex Timing (Karting Emmen)
+ * Kart Analytics – logger voor Apex Timing (Karting Emmen, Kartcentrum Lelystad)
  *
  * Apex Timing stuurt via een WebSocket regels als "sleutel|klasse|waarde":
  *   init|r|             nieuwe verbinding of nieuwe sessie
@@ -125,12 +125,13 @@ function createApexParser(onLap) {
 }
 
 /** WebSocket-verbinding met automatisch opnieuw verbinden */
-function createApexLogger({ url, log, onLap, watchdogMs = 10 * 60000 }) {
+function createApexLogger({ id = "apex", url, log, onLap, watchdogMs = 10 * 60000 }) {
+  const say = (...a) => log(`[${id}]`, ...a);
   const parser = createApexParser((lap) => {
     try {
       if (onLap(lap)) live.lapsLogged++;
     } catch (e) {
-      log("[emmen] ronde opslaan mislukt", e.message);
+      say("ronde opslaan mislukt", e.message);
     }
   });
   const live = { state: "starting", connectedSince: null, lastMessage: null, lastLap: null, lapsLogged: 0, reconnects: 0 };
@@ -143,7 +144,7 @@ function createApexLogger({ url, log, onLap, watchdogMs = 10 * 60000 }) {
     try {
       ws = new WebSocket(url);
     } catch (e) {
-      log("[emmen] websocket fout", e.message);
+      say("websocket fout", e.message);
       return later();
     }
     const sock = ws;
@@ -158,7 +159,7 @@ function createApexLogger({ url, log, onLap, watchdogMs = 10 * 60000 }) {
       retry = 0;
       live.state = "open";
       live.connectedSince = Date.now();
-      log("[emmen] verbonden met Apex Timing");
+      say("verbonden met Apex Timing");
     };
     sock.onmessage = (ev) => {
       if (sock !== ws) return;
@@ -169,7 +170,7 @@ function createApexLogger({ url, log, onLap, watchdogMs = 10 * 60000 }) {
     sock.onerror = (e) => {
       if (sock !== ws) return;
       clearTimeout(openTimeout);
-      log("[emmen] websocket fout", e && e.message ? e.message : "");
+      say("websocket fout", e && e.message ? e.message : "");
       later();
     };
     sock.onclose = () => {
