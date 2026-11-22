@@ -24,7 +24,7 @@ const CFG = {
   // rondes langzamer dan dit tellen nooit als schone ronde (volwassenen)
   cleanMaxMs: Number(process.env.CLEAN_MAX_MS || 40000),
 };
-const VERSION = "2.3.0";
+const VERSION = "2.4.0";
 
 // banen; elke heat hoort bij één baan (kolom heats.track)
 // Apex Timing: wss-poort = configPort uit live.apex-timing.com/<baan>/javascript/config.js + 3
@@ -590,7 +590,7 @@ function driverDetail(name, opts) {
   }
   const heats = new Map();
   for (const r of rows) {
-    if (!heats.has(r.heat_id)) heats.set(r.heat_id, { heat: r.heat_name, ts: r.ts, kart: r.kart, laps: [] });
+    if (!heats.has(r.heat_id)) heats.set(r.heat_id, { id: r.heat_id, heat: r.heat_name, ts: r.ts, kart: r.kart, laps: [] });
     heats.get(r.heat_id).laps.push({ lap: r.lap_no, ms: r.lap_ms, flag: r.flag });
   }
   return {

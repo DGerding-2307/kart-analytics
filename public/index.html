@@ -113,6 +113,13 @@ td{border-bottom:1px solid #22222d}
 .who.big .nm{font-size:16px}
 .chart{background:linear-gradient(180deg,rgba(255,255,255,.02),transparent)}
 @media (max-width:640px){.filters{margin-right:0}header::after{width:60px}.who .nm{display:none}}
+/* ================= volgen ================= */
+button.star{background:none;border:0;padding:0 6px;font-size:18px;line-height:1;color:var(--muted);transform:none;font-style:normal;letter-spacing:0;vertical-align:middle}
+button.star.on{color:var(--yellow);text-shadow:0 0 8px rgba(255,209,46,.6)}
+button.star:hover{color:var(--yellow)}
+.fadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.fadd input{width:260px}
+.livepill{background:var(--green)!important;color:#000;cursor:pointer}
 /* ================= live timing ================= */
 nav button .ldot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-left:6px;box-shadow:0 0 8px var(--green);animation:pulse 1.6s infinite;vertical-align:1px}
 .lbar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:linear-gradient(100deg,#0b0b10 0,#0b0b10 70%,var(--red) 70.2%,#8a0400);padding:12px 18px;margin-bottom:14px;clip-path:polygon(0 0,100% 0,calc(100% - 16px) 100%,0 100%)}
@@ -158,6 +165,7 @@ nav button .ldot{display:inline-block;width:8px;height:8px;border-radius:50%;bac
   <button data-v="live" id="navlive">Live timing</button>
   <button data-v="karts">Karts</button>
   <button data-v="drivers">Coureurs</button>
+  <button data-v="follow">Volgen</button>
   <button data-v="heats">Heats</button>
   <button data-v="conditions">Omstandigheden</button>
   <button data-v="about">Uitleg</button>
@@ -356,7 +364,9 @@ async function loadMeta() {
 const me = () => store.get("me", "");
 const follows = () => store.get("follow", []);
 window.setMe = (n) => { store.set("me", n); render(); };
-window.toggleFollow = (n) => { const f = follows(); store.set("follow", f.includes(n) ? f.filter((x) => x !== n) : [...f, n]); render(); };
+window.toggleFollow = (n) => { if (!n) return; const f = follows(); store.set("follow", f.includes(n) ? f.filter((x) => x !== n) : [...f, n]); render(); };
+/* ster om iemand te volgen; werkt ook in klikbare tabelrijen */
+const star = (n) => (n && n !== me() ? `<button class="star ${follows().includes(n) ? "on" : ""}" data-tip="${follows().includes(n) ? "Niet meer volgen" : "Volgen"}" onclick="event.stopPropagation();toggleFollow(${js(n)})">${follows().includes(n) ? "★" : "☆"}</button>` : `<span class="star" style="display:inline-block;width:30px"></span>`);
 
 /* ---------------- status ---------------- */
 let summary = null;
@@ -416,8 +426,8 @@ async function vOverview() {
     <div class="card"><h2>${myName ? esc(myName) : "Jij"} <small>${myName ? "" : "stel in bij Coureurs → ‘dit ben ik’"}</small></h2>
       ${mine ? `<div class="advice"><div><div class="muted">Beste</div><b class="purple">${fmt(mine.best)}</b></div><div><div class="muted">Mediaan</div><b>${fmt(mine.median)}</b></div><div><div class="muted">Constantheid (σ)</div><b>${fmt(mine.std)}</b></div><div><div class="muted">Heats</div><b>${mine.heats}</b></div></div>
       <div style="margin-top:10px"><button onclick="go('driver',${js(myName)})">Mijn analyse →</button></div>` : `<div class="hint">${myName ? "In deze periode nog geen rondes van jou gelogd." : "Kies jezelf in de coureurslijst om hier je eigen cijfers te zien."}</div>`}
-      ${follows().length ? `<h2 style="margin-top:16px">Gevolgd</h2>` + table("fol", [
-        { k: "driver", t: "Coureur", f: (r) => who(r.driver) }, { k: "best", t: "Beste", r: 1, f: (r) => fmt(r.best) },
+      ${follows().length ? `<h2 style="margin-top:16px">Gevolgd <small><a href="#follow" onclick="go('follow');return false" style="color:#ffd0cd">alles →</a></small></h2>` + table("fol", [
+        { k: "driver", t: "Coureur", f: (r) => star(r.driver) + who(r.driver) }, { k: "best", t: "Beste", r: 1, f: (r) => fmt(r.best) },
         { k: "diff", t: "Verschil met jou", r: 1, f: (r) => (mine && r.best ? `<span class="${r.best < mine.best ? "red" : "green"}">${fmtD(r.best - mine.best)}</span>` : "–") },
         { k: "last", t: "Laatst gezien", r: 1, f: (r) => ago(r.last) }],
         follows().map((n) => d.find((x) => x.driver === n) || { driver: n }), (r) => `go('driver',${js(r.driver)})`) : ""}
@@ -501,7 +511,7 @@ async function vLive() {
     const isMe = myName && d.N === myName, isFol = !isMe && fol.includes(d.N);
     return `<tr class="click ${isMe ? "me" : isFol ? "fol" : ""} ${lt.flash.has(k) ? "flash" : ""}" onclick="go('driver',${js(d.N)})">
       <td><span class="pos">${esc(d.P ?? "")}</span>${posArrow(d)}</td>
-      <td><span class="stripe" style="background:${kartColor(d.K)}"></span>${who(d.N)}</td>
+      <td><span class="stripe" style="background:${kartColor(d.K)}"></span>${star(d.N)}${who(d.N)}</td>
       <td class="hide-s">${kno(d.K)}</td>
       <td class="r hide-s">${esc(d.L ?? "")}</td>
       <td class="r"><span class="lt ${cls}">${fmt(last || null)}</span></td>
@@ -600,9 +610,10 @@ async function vDrivers() {
   const m = me(), f = follows();
   return `<div class="card"><h2>Coureurs <small>${d.length} gezien in deze periode</small></h2>
   <input placeholder="Zoek coureur…" value="${esc(store.get("dq", ""))}" oninput="store.set('dq',this.value);clearTimeout(window._dq);window._dq=setTimeout(render,250)" style="margin-bottom:10px;width:260px">
+  <div class="hint" style="margin-bottom:8px">Klik op ☆ om een coureur te volgen. Gevolgde coureurs zie je onder <a href="#follow" onclick="go('follow');return false">Volgen</a>${f.length ? ` (${f.length})` : ""}.</div>
   ${table("drv", [
     { k: "rank", t: "#", v: (r) => r.rating ?? 1e9, f: (r, i) => i + 1 },
-    { k: "driver", t: "Coureur", f: (r) => `${who(r.driver)}${r.driver === m ? ' <span class="pill" style="background:var(--red)">JIJ</span>' : ""}${f.includes(r.driver) ? ' <span class="pill">volg</span>' : ""}` },
+    { k: "driver", t: "Coureur", f: (r) => `${star(r.driver)}${who(r.driver)}${r.driver === m ? ' <span class="pill" style="background:var(--red)">JIJ</span>' : ""}` },
     { k: "rating", t: "Regressie", r: 1, f: (r) => (r.rating ? `<b data-tip="Verwachte rondetijd in een gemiddelde kart (± ${fmt(r.ratingSe)})">${fmt(r.rating)}</b>` : "–") },
     { k: "best", t: "Beste", r: 1, f: (r) => `<span class="purple">${fmt(r.best)}</span>` },
     { k: "median", t: "Mediaan", r: 1, f: (r) => fmt(r.median) },
@@ -644,6 +655,79 @@ async function vDriver(name) {
   </div>`;
 }
 
+/* ---------------- volgen ---------------- */
+window.addFollow = (inp) => {
+  const n = (window._drvNames || []).find((x) => x.toLowerCase() === inp.value.trim().toLowerCase());
+  if (!n) return;
+  inp.value = "";
+  if (!follows().includes(n) && n !== me()) toggleFollow(n);
+};
+async function vFollow() {
+  const myName = me(), fol = follows();
+  const people = [...(myName ? [myName] : []), ...fol.filter((n) => n !== myName)];
+  const [d, live, ...det] = await Promise.all([
+    api("drivers"), fetch("api/live?" + T()).then((r) => r.json()).catch(() => ({})),
+    ...people.map((n) => api("driver/" + encodeURIComponent(n)).catch(() => ({ driver: n, heats: [] }))),
+  ]);
+  window._drvNames = d.map((x) => x.driver);
+  const stat = Object.fromEntries(d.map((x) => [x.driver, x]));
+  const mine = myName ? stat[myName] : null;
+  const L = live.snapshot;
+  const onTrack = new Set(L && Array.isArray(L.D) && live.at && Date.now() - live.at < LIVE_STALE_MS ? L.D.map((x) => x.N) : []);
+  const color = (n, i) => (n === myName ? "#E10600" : PALETTE[(i % (PALETTE.length - 1)) + 1]);
+  const add = `<div class="fadd"><input list="drvlist" placeholder="Coureur toevoegen…" onchange="addFollow(this)" onkeydown="if(event.key==='Enter')addFollow(this)">
+    <datalist id="drvlist">${d.filter((x) => x.driver !== myName && !fol.includes(x.driver)).slice(0, 800).map((x) => `<option value="${esc(x.driver)}">`).join("")}</datalist>
+    <span class="hint">of klik op ☆ bij een coureur in Coureurs, Live timing of een heat.</span></div>`;
+  if (!fol.length) {
+    return `<div class="card"><h2>Volgen</h2>${add}<div class="empty">Je volgt nog niemand.<br><span class="hint">Volg vrienden of rivalen om hun cijfers, progressie en onderlinge heats naast die van jou te zien.${myName ? "" : " Stel ook jezelf in via Coureurs → ‘Dit ben ik’."}</span></div></div>`;
+  }
+  const rows = people.map((n) => ({ ...(stat[n] || {}), driver: n, me: n === myName }));
+  const tbl = table("follow", [
+    { k: "driver", t: "Coureur", f: (r) => `${star(r.driver)}${who(r.driver)}${r.me ? ' <span class="pill" style="background:var(--red)">JIJ</span>' : ""}${onTrack.has(r.driver) ? ` <span class="pill livepill" onclick="event.stopPropagation();go('live')">● rijdt nu</span>` : ""}` },
+    { k: "rating", t: "Regressie", r: 1, f: (r) => (r.rating ? `<b>${fmt(r.rating)}</b>` : "–") },
+    { k: "best", t: "Beste", r: 1, f: (r) => `<span class="purple">${fmt(r.best)}</span>` },
+    { k: "diff", t: "t.o.v. jou", r: 1, v: (r) => (mine && r.best ? r.best - mine.best : null), f: (r) => (mine && r.best && !r.me ? `<span class="${r.best < mine.best ? "red" : "green"}">${fmtD(r.best - mine.best)}</span>` : "") },
+    { k: "median", t: "Mediaan", r: 1, f: (r) => fmt(r.median) },
+    { k: "std", t: "Constantheid σ", r: 1, f: (r) => fmt(r.std) },
+    { k: "heats", t: "Heats", r: 1, f: (r) => r.heats ?? 0 },
+    { k: "last", t: "Laatst gezien", r: 1, f: (r) => (r.last ? ago(r.last) : "niet in deze periode") },
+  ], rows, (r) => `go('driver',${js(r.driver)})`);
+  // progressie: snelste schone ronde per heat, per persoon
+  const series = det.map((x, i) => ({
+    color: color(people[i], i), dots: true, r: 3, width: people[i] === myName ? 3 : 1.8,
+    points: x.heats.slice().reverse().map((h) => { const c = h.laps.filter((l) => l.flag === "clean").map((l) => l.ms); return c.length ? { x: h.ts, y: Math.min(...c), tip: `${people[i]}\n${fmtDate(h.ts)} · kart ${h.kart}: ${fmt(Math.min(...c))}` } : null; }).filter(Boolean),
+  }));
+  const legend = `<div class="legend">${people.map((n, i) => `<span><i style="background:${color(n, i)}"></i>${esc(n)}</span>`).join("")}</div>`;
+  // laatste heats van gevolgde coureurs
+  const feed = det.flatMap((x, i) => x.heats.map((h) => ({ ...h, driver: people[i], best: Math.min(...h.laps.filter((l) => l.flag === "clean").map((l) => l.ms).concat([Infinity])) })))
+    .filter((h) => h.driver !== myName).sort((a, b) => b.ts - a.ts).slice(0, 25);
+  // onderling: heats waarin jij en een gevolgde coureur samen reden
+  let duel = "";
+  if (myName && det[0]) {
+    const bestOf = (h) => { const c = h.laps.filter((l) => l.flag === "clean").map((l) => l.ms); return c.length ? Math.min(...c) : null; };
+    const myHeats = new Map(det[0].heats.map((h) => [h.id, h]));
+    const together = det.slice(1).flatMap((x, j) => x.heats.filter((h) => myHeats.has(h.id)).map((h) => ({ id: h.id, ts: h.ts, heat: h.heat, driver: people[j + 1], me: bestOf(myHeats.get(h.id)), them: bestOf(h) }))).filter((r) => r.me && r.them).sort((a, b) => b.ts - a.ts);
+    const score = {};
+    for (const r of together) { const s = (score[r.driver] = score[r.driver] || { w: 0, l: 0 }); r.me < r.them ? s.w++ : s.l++; }
+    duel = `<div class="card" style="margin-top:16px"><h2>Onderling <small>heats waarin jullie samen reden · snelste schone ronde</small></h2>
+      ${Object.keys(score).length ? `<div class="advice" style="margin-bottom:12px">${Object.entries(score).map(([n, s]) => `<div><div class="muted">jij vs ${esc(n)}</div><b class="${s.w >= s.l ? "green" : "red"}">${s.w} – ${s.l}</b></div>`).join("")}</div>` : ""}
+      ${table("duel", [
+        { k: "ts", t: "Wanneer", f: (r) => fmtDate(r.ts) }, { k: "heat", t: "Heat" }, { k: "driver", t: "Tegen", f: (r) => who(r.driver) },
+        { k: "me", t: "Jij", r: 1, f: (r) => `<span class="${r.me < r.them ? "purple" : ""}">${fmt(r.me)}</span>` },
+        { k: "them", t: "Zij", r: 1, f: (r) => `<span class="${r.them < r.me ? "purple" : ""}">${fmt(r.them)}</span>` },
+        { k: "d", t: "Verschil", r: 1, v: (r) => r.me - r.them, f: (r) => `<span class="${r.me < r.them ? "green" : "red"}">${fmtD(r.me - r.them)}</span>` },
+      ], together.slice(0, 50), (r) => `go('heat',${r.id})`)}</div>`;
+  }
+  return `<div class="card"><h2>Volgen <small>${fol.length} gevolgd · deze periode</small></h2>${add}${tbl}</div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h2>Progressie <small>snelste schone ronde per heat</small></h2>${chart(series, { xTime: true, h: 260, w: 560 })}${legend}</div>
+    <div class="card"><h2>Laatste heats van gevolgden</h2>${table("ffeed", [
+      { k: "ts", t: "Wanneer", f: (r) => fmtDate(r.ts) }, { k: "driver", t: "Coureur", f: (r) => who(r.driver) }, { k: "heat", t: "Heat" },
+      { k: "kart", t: "Kart", f: (r) => kno(r.kart) }, { k: "best", t: "Beste", r: 1, f: (r) => fmt(isFinite(r.best) ? r.best : null) },
+    ], feed, (r) => `go('heat',${r.id})`)}</div>
+  </div>${duel}`;
+}
+
 async function vHeats() {
   const h = await api("heats");
   return `<div class="card"><h2>Heats <small>${h.length} in deze periode</small></h2>${table("heats", [
@@ -662,7 +746,7 @@ async function vHeat(id) {
   <div class="card"><h2>${esc(h.name)}</h2>${chart(series, { h: 320, xFmt: (v) => "R" + v })}
   <div class="legend">${ps.map((p, i) => `<span><i style="background:${PALETTE[i % PALETTE.length]}"></i>${esc(p.driver)} (#${esc(p.kart)})</span>`).join("")}</div></div>
   <div class="card" style="margin-top:16px"><h2>Uitslag op snelste ronde</h2>${table("hp", [
-    { k: "i", t: "#", f: (r, i) => i + 1 }, { k: "driver", t: "Coureur", f: (r) => who(r.driver) }, { k: "kart", t: "Kart", f: (r) => kno(r.kart) },
+    { k: "i", t: "#", f: (r, i) => i + 1 }, { k: "driver", t: "Coureur", f: (r) => star(r.driver) + who(r.driver) }, { k: "kart", t: "Kart", f: (r) => kno(r.kart) },
     { k: "best", t: "Beste", r: 1, f: (r) => `<span class="${r.best === fastest ? "purple" : ""}">${fmt(r.best)}</span>` },
     { k: "gap", t: "Verschil", r: 1, v: (r) => r.best - fastest, f: (r) => (r.best === fastest ? "" : fmtD(r.best - fastest)) },
     { k: "laps", t: "Rondes", r: 1, v: (r) => r.laps.length, f: (r) => r.laps.length },
@@ -692,6 +776,7 @@ function vAbout() {
   return `<div class="card"><h2>Hoe werkt het?</h2><div class="hint" style="font-size:15px;max-width:820px">
   <p><b>Banen.</b> Kies rechtsboven de baan: <b>Assen</b> (Kart en Fun Fabriek, via SMS-Timing), <b>Emmen</b> (Karting Emmen, buitenbaan van 1084 m) of <b>Lelystad</b> (Kartcentrum Lelystad, buitenbaan van 735 m), beide via Apex Timing. Alle banen worden tegelijk gelogd en apart geanalyseerd. In Emmen en Lelystad is er geen indeling volwassenen/kids en geen vaste tijdgrens voor schone rondes.</p>
   <p><b>Live timing.</b> Het tabblad <b>Live timing</b> toont de lopende heat zoals op de tv bij de baan: positie (met ▲▼ bij een inhaalactie), laatste en beste ronde, gap naar de leider, interval naar de coureur ervoor en het verloop van de laatste rondes. Paars = snelste ronde van de heat, groen = eigen beste, geel = langzamer. Jij staat rood gemarkeerd, gevolgde coureurs blauw. De pagina ververst elke 1,5 seconde. Stuurt de baan zelf geen gap mee, dan is de gap het verschil in beste ronde.</p>
+  <p><b>Volgen.</b> Klik op ☆ naast een coureur (in Coureurs, Live timing, een heat of op de coureurspagina) om hem of haar te volgen, of voeg iemand toe op het tabblad <b>Volgen</b>. Daar zie je de cijfers van jou en je gevolgde coureurs naast elkaar, de progressie in één grafiek, hun laatste heats en de heats waarin jullie samen reden (wie was sneller?). Wie je volgt wordt in deze browser onthouden, per apparaat.</p>
   <p><b>Logger.</b> De server luistert dag en nacht naar de openbare live timing van beide banen en slaat elke voltooide ronde op: tijd, coureur, kart, rondenummer en positie. Hiervoor zijn geen inloggegevens nodig. Valt de verbinding weg, dan maakt hij vanzelf opnieuw verbinding.</p>
   <p><b>Schone rondes.</b> Niet elke ronde zegt iets over de kart. Daarom wordt elke ronde gemarkeerd: <span style="color:${FLAGC.out}">uitrijronde</span> (ronde 1), <span style="color:${FLAGC.yellow}">gele vlag</span> (meer dan de helft van het veld rijdt tegelijk &gt;15% langzamer), <span style="color:${FLAGC.slow}">langzaam</span> (&gt;12% boven het eigen niveau in die heat — spin of botsing — of in Assen langzamer dan 40,0 s) en <span style="color:${FLAGC.clean}">schoon</span>. Statistieken gebruiken alleen schone rondes.</p>
   <p><b>Regressie.</b> Elke schone ronde wordt verklaard als: <i>gemiddelde + niveau van de coureur + effect van de kart + effect van het rondenummer (banden opwarmen)</i>. Het model schat al die effecten tegelijk. Daardoor kun je karts eerlijk vergelijken (los van wie erin reed) en coureurs eerlijk vergelijken (los van welke kart ze kregen). Weer en baanomstandigheden tellen niet mee: in Assen is het een indoorbaan; in Emmen en Lelystad (buiten) kan regen de cijfers beïnvloeden.</p>
@@ -702,7 +787,7 @@ function vAbout() {
 }
 
 /* ---------------- router ---------------- */
-const VIEWS = { overview: vOverview, live: vLive, karts: vKarts, kart: vKart, drivers: vDrivers, driver: vDriver, heats: vHeats, heat: vHeat, conditions: vConditions, about: vAbout };
+const VIEWS = { overview: vOverview, live: vLive, follow: vFollow, karts: vKarts, kart: vKart, drivers: vDrivers, driver: vDriver, heats: vHeats, heat: vHeat, conditions: vConditions, about: vAbout };
 let renderSeq = 0;
 async function render() {
   const seq = ++renderSeq;

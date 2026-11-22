@@ -29,6 +29,7 @@ De map `/mnt/user/appdata/kart-analytics/data` bevat de database. Die blijft sta
 | Overzicht | live heat, snelste/traagste kart, "welke kart kies ik?", jouw cijfers en gevolgde coureurs, laatste heats |
 | Karts | ranglijst met kart-effect (gecorrigeerd voor de coureur), snelste, top-10%, mediaan, gemiddelde, langzaamste, spreiding |
 | Kart-detail | alle rondes over tijd met trendlijn, per dag snelste/mediaan/langzaamste, verdeling, rijders, top 10 |
+| Volgen | jij en gevolgde coureurs naast elkaar, progressie in één grafiek, hun laatste heats, onderlinge heats (wie was sneller). Volgen met ☆ in Coureurs, Live timing en heats |
 | Coureurs / detail | beste, mediaan, constantheid, progressie, rondetijden per heat, prestaties per kart |
 | Heats | rondetijden per ronde per coureur, gele vlaggen |
 | Omstandigheden | opwarmcurve (ronde-in-heat), tijdstip van de dag, dag van de week |
