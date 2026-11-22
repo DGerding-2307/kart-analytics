@@ -25,6 +25,7 @@ De map `/mnt/user/appdata/kart-analytics/data` bevat de database. Die blijft sta
 
 | Scherm | Inhoud |
 |---|---|
+| Live timing | lopende heat als timing tower (elke 1,5 s ververst): positie en inhaalacties, laatste/beste ronde in paars/groen/geel, gap, interval, rondeverloop, snelste ronde, rondetijdengrafiek van de heat |
 | Overzicht | live heat, snelste/traagste kart, "welke kart kies ik?", jouw cijfers en gevolgde coureurs, laatste heats |
 | Karts | ranglijst met kart-effect (gecorrigeerd voor de coureur), snelste, top-10%, mediaan, gemiddelde, langzaamste, spreiding |
 | Kart-detail | alle rondes over tijd met trendlijn, per dag snelste/mediaan/langzaamste, verdeling, rijders, top 10 |
@@ -44,7 +45,7 @@ Alle eindpunten accepteren `?track=assen|emmen|lelystad` (standaard `assen`), `?
 |---|---|
 | `/api/tracks` | lijst van banen |
 | `/api/summary` | status logger, totalen |
-| `/api/live` | laatste live bericht |
+| `/api/live` | laatste live bericht (`?laps=1`: ook alle rondes van de lopende heat) |
 | `/api/karts` | statistieken per kart |
 | `/api/kart/<nr>` | alle rondes + dagcijfers van één kart |
 | `/api/drivers` | statistieken per coureur |

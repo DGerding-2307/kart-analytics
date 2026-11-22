@@ -24,7 +24,7 @@ const CFG = {
   // rondes langzamer dan dit tellen nooit als schone ronde (volwassenen)
   cleanMaxMs: Number(process.env.CLEAN_MAX_MS || 40000),
 };
-const VERSION = "2.2.0";
+const VERSION = "2.3.0";
 
 // banen; elke heat hoort bij één baan (kolom heats.track)
 // Apex Timing: wss-poort = configPort uit live.apex-timing.com/<baan>/javascript/config.js + 3
@@ -742,6 +742,14 @@ function liveWithPeople() {
   return { ...snap, D: snap.D.map((d) => ({ ...d, PID: m[nameKey(d.N)] || null })) };
 }
 
+/** rondes van de heat die nu (of het laatst) op deze baan rijdt */
+const lapsOfHeat = db.prepare("SELECT participant p, lap_no n, lap_ms ms FROM laps WHERE heat_id = ? ORDER BY participant, lap_no");
+function liveLaps(track) {
+  const cur = heatSrc[track] && heatSrc[track].cur;
+  if (!cur) return { heat: null, laps: [] };
+  return { heat: cur.id, laps: lapsOfHeat.all(cur.id) };
+}
+
 /* ------------------------------------------------------------------ */
 /* HTTP                                                                */
 /* ------------------------------------------------------------------ */
@@ -1004,8 +1012,12 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/tracks") return send(res, 200, Object.entries(TRACKS).map(([id, t]) => ({ id, name: t.name })));
     if (p === "/api/summary") return send(res, 200, summary(track));
     if (p === "/api/live") {
-      if (track !== "assen") return send(res, 200, apex[track] ? { state: apex[track].live.state, at: apex[track].live.lastLap, snapshot: apex[track].snapshot() } : { state: "uit", at: null, snapshot: null });
-      return send(res, 200, { state: live.state, at: live.lastMessage, snapshot: liveWithPeople() });
+      let out;
+      if (track !== "assen") out = apex[track] ? { state: apex[track].live.state, at: apex[track].live.lastLap, snapshot: apex[track].snapshot() } : { state: "uit", at: null, snapshot: null };
+      else out = { state: live.state, at: live.lastMessage, snapshot: liveWithPeople() };
+      // ?laps=1: alle rondes van de lopende heat (voor de live-timingpagina)
+      if (P.get("laps")) Object.assign(out, liveLaps(track));
+      return send(res, 200, out);
     }
     if (p === "/api/people") return send(res, 200, track === "assen" ? peopleMap() : {});
     if (p === "/api/numbers") return send(res, 200, driverNumbers(track));
@@ -1069,4 +1081,4 @@ if (require.main === module) {
   process.on("SIGINT", stop);
 }
 
-module.exports = { apex, importArchive, personalHeats, heatFull, smsRecords, handleMessage, kartStats, kartDetail, driverStats, driverDetail, conditions, heatList, heatDetail, summary, db };
+module.exports = { server, apex, importArchive, personalHeats, heatFull, smsRecords, handleMessage, kartStats, kartDetail, driverStats, driverDetail, conditions, heatList, heatDetail, summary, db };

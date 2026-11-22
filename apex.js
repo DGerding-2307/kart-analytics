@@ -42,6 +42,8 @@ function createApexParser(onLap) {
     laps: Number(plain(r.cells[colOf("tlp")])) || 0,
     last: lapMs(plain(r.cells[colOf("llp")])),
     best: lapMs(plain(r.cells[colOf("blp")])),
+    gap: plain(r.cells[colOf("gap")]),
+    int: plain(r.cells[colOf("int")]),
   });
 
   function parseGrid(html) {
@@ -116,7 +118,7 @@ function createApexParser(onLap) {
   function snapshot() {
     const D = [...st.rows].map(([rid, r]) => {
       const i = info(r);
-      return { D: Number(rid.slice(1)), P: i.pos, N: i.driver, K: i.kart, L: i.laps, T: i.last || null, B: i.best || null };
+      return { D: Number(rid.slice(1)), P: i.pos, N: i.driver, K: i.kart, L: i.laps, T: i.last || null, B: i.best || null, G: i.gap || null, I: i.int || null };
     }).filter((d) => d.N);
     return { N: sessionName(), light: st.light, D };
   }
