@@ -113,6 +113,33 @@ td{border-bottom:1px solid #22222d}
 .who.big .nm{font-size:16px}
 .chart{background:linear-gradient(180deg,rgba(255,255,255,.02),transparent)}
 @media (max-width:640px){.filters{margin-right:0}header::after{width:60px}.who .nm{display:none}}
+/* ================= live timing ================= */
+nav button .ldot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-left:6px;box-shadow:0 0 8px var(--green);animation:pulse 1.6s infinite;vertical-align:1px}
+.lbar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:linear-gradient(100deg,#0b0b10 0,#0b0b10 70%,var(--red) 70.2%,#8a0400);padding:12px 18px;margin-bottom:14px;clip-path:polygon(0 0,100% 0,calc(100% - 16px) 100%,0 100%)}
+.lbar .hn{font-size:22px;font-weight:900;font-style:italic;text-transform:uppercase}
+.lbar .lc{font-size:13px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+.lbar .lc b{color:#fff;font-size:20px;font-style:italic;margin-left:4px}
+.lbar .clk{margin-left:auto;font-size:30px;font-weight:900;font-style:italic;font-variant-numeric:tabular-nums}
+.flag{display:inline-block;padding:3px 12px;font-weight:900;font-style:italic;transform:skewX(-12deg);text-transform:uppercase;font-size:13px}
+.flag.lg{background:var(--green);color:#000}.flag.ly{background:var(--yellow);color:#000}.flag.lr{background:var(--red);color:#fff}
+.flag.lf{background:conic-gradient(#fff 25%,#111 0 50%,#fff 0 75%,#111 0) 0 0/10px 10px;color:#000;text-shadow:0 0 3px #fff}
+.flb{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:linear-gradient(90deg,rgba(168,85,247,.35),transparent 70%);border-left:4px solid var(--purple);padding:8px 14px;margin-bottom:14px}
+.flb .t{color:var(--purple);font-size:22px;font-weight:900;font-style:italic;font-variant-numeric:tabular-nums}
+.tower td{padding:8px 6px}
+.tower tr.me{background:linear-gradient(90deg,rgba(225,6,0,.4),transparent 80%)}
+.tower tr.fol{background:linear-gradient(90deg,rgba(59,130,246,.32),transparent 80%)}
+.tower tr.me td,.tower tr.fol td{background:transparent!important}
+.tower .pos{display:inline-block;min-width:30px;text-align:center;background:#fff;color:#111;font-weight:900;font-style:italic;transform:skewX(-12deg)}
+.tower tr:nth-child(1) .pos{background:#F6C343}.tower tr:nth-child(2) .pos{background:#CFD4DA}.tower tr:nth-child(3) .pos{background:#D79A63}
+.tower .stripe{display:inline-block;width:4px;height:22px;margin-right:8px;vertical-align:middle}
+.pchg{display:inline-block;min-width:26px;font-size:11px;font-weight:900;margin-left:4px}
+.pchg.up{color:var(--green)}.pchg.down{color:var(--red)}
+.lt{font-weight:700;font-style:italic}
+.lt.purple{background:var(--purple);color:#fff;padding:1px 6px}.lt.green{color:var(--green)}.lt.yellow{color:var(--yellow)}
+@keyframes newlap{0%{background:rgba(255,255,255,.35)}100%{background:transparent}}
+.tower tr.flash td{animation:newlap 1.4s ease-out}
+.spark{width:90px;height:24px;vertical-align:middle}
+@media (max-width:640px){.tower .hide-s{display:none}.tower td{padding:8px 3px}.lbar .clk{font-size:22px}}
 </style>
 </head>
 <body>
@@ -128,6 +155,7 @@ td{border-bottom:1px solid #22222d}
 </header>
 <nav id="nav">
   <button data-v="overview" class="act">Overzicht</button>
+  <button data-v="live" id="navlive">Live timing</button>
   <button data-v="karts">Karts</button>
   <button data-v="drivers">Coureurs</button>
   <button data-v="heats">Heats</button>
@@ -339,6 +367,8 @@ async function refreshStatus() {
     const on = st === "open" && summary.logger.lastMessage && Date.now() - summary.logger.lastMessage < 120000;
     $("#dot").className = "dot " + (on ? "on" : st === "open" ? "" : "off");
     const baan = TRACKS[state.track];
+    const nl = $("#navlive");
+    if (nl) nl.innerHTML = "Live timing" + (on ? '<span class="ldot"></span>' : "");
     $("#stxt").textContent = `${baan} · ` + (on ? `logger live · ${summary.totals.laps.toLocaleString("nl-NL")} rondes` : st === "open" ? "verbonden · geen heat bezig" : `logger: ${st}`);
   } catch (_) {
     $("#dot").className = "dot off";
@@ -377,7 +407,7 @@ async function vOverview() {
     <div class="card kpi"><div class="l">Traagste kart</div><div class="v red">${ranked.length > 1 ? "#" + esc(ranked[ranked.length - 1].kart) : "–"}</div><div class="s">${ranked.length > 1 ? fmtD(idx(ranked[ranked.length - 1]), 2) + " s/ronde" : "–"}</div></div>
   </div>
   <div class="grid g2" style="margin-top:16px">
-    <div class="card"><h2>Live <small>${live.at ? ago(live.at) : ""}</small></h2>${liveHtml}</div>
+    <div class="card"><h2>Live <small>${live.at ? ago(live.at) : ""}</small></h2>${liveHtml}<div style="margin-top:10px"><button onclick="go('live')">Live timing →</button></div></div>
     <div class="card"><h2>Welke kart kies ik? <small>kart-effect uit regressie, gecorrigeerd voor coureur</small></h2>
       ${bars(ranked.slice(0, 12).map((x) => ({ label: "#" + x.kart, value: idx(x), color: idx(x) < 0 ? "var(--green)" : "var(--red)", tip: `kart ${x.kart}\n${fmtD(idx(x), 3)} s per ronde\n${x.cleanLaps} schone rondes`, click: `go('kart',${js(x.kart)})` })), { fmt: (v) => fmtD(v, 2), rowH: 24 })}
       <div class="hint">Negatief (groen) = sneller dan gemiddeld. Volledige lijst onder <a href="#karts" onclick="go('karts');return false">Karts</a>.</div></div>
@@ -397,6 +427,106 @@ async function vOverview() {
       { k: "best", t: "Snelste", r: 1, f: (r) => (r.best ? `${fmt(r.best.ms)} <span class="muted">${esc(r.best.driver)} · #${esc(r.best.kart)}</span>` : "–") }],
       h.slice(0, 8), (r) => `go('heat',${r.id})`)}</div>
   </div>`;
+}
+
+/* ---------------- live timing ---------------- */
+const LIVE_STALE_MS = 120000;
+const LIGHT = { lg: "groen", ly: "geel", lr: "rood", lf: "finish" };
+const KARTC = ["#E8002D", "#3671C6", "#27F4D2", "#FF8000", "#229971", "#0093CC", "#64C4FF", "#B6BABD", "#52E252", "#6692FF", "#FFD12E", "#F596C8"];
+const kartColor = (k) => { const n = parseInt(String(k).replace(/\D/g, ""), 10); if (isFinite(n)) return KARTC[n % KARTC.length]; let h = 0; for (const c of String(k)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return KARTC[h % KARTC.length]; };
+const fmtClock = (ms) => { const n = Number(ms); if (!isFinite(n) || n <= 0) return ""; const t = Math.round(n / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+// per heat bijhouden: plek-wijzigingen, nieuwe rondes, snelste ronde
+const lt = { heat: null, pos: {}, laps: {}, flash: new Set(), fl: null };
+function liveTrack(L) {
+  if (lt.heat !== L.N) Object.assign(lt, { heat: L.N, pos: {}, laps: {}, fl: null });
+  lt.flash = new Set();
+  const now = Date.now();
+  for (const d of L.D) {
+    const k = String(d.D || d.N), p = Number(d.P) || 0, l = Number(d.L) || 0;
+    const e = lt.pos[k];
+    if (!e) lt.pos[k] = { p, delta: 0, at: 0 };
+    else if (p && e.p !== p) Object.assign(e, { delta: e.p - p, at: now, p });
+    if (lt.laps[k] != null && l > lt.laps[k]) lt.flash.add(k);
+    lt.laps[k] = l;
+  }
+  const bests = L.D.map((d) => Number(d.B)).filter((n) => n > 0);
+  const fl = bests.length ? Math.min(...bests) : 0;
+  if (fl && (!lt.fl || fl < lt.fl.ms)) { const w = L.D.find((d) => Number(d.B) === fl); lt.fl = { ms: fl, name: w && w.N, kart: w && w.K, at: now }; }
+}
+const posArrow = (d) => { const e = lt.pos[String(d.D || d.N)]; if (!e || !e.delta || Date.now() - e.at > 20000) return `<span class="pchg"></span>`; return e.delta > 0 ? `<span class="pchg up">▲${e.delta}</span>` : `<span class="pchg down">▼${-e.delta}</span>`; };
+function spark(laps) {
+  const v = laps.filter((l) => l.n > 1).slice(-10).map((l) => l.ms);
+  if (v.length < 2) return "";
+  const s = [...v].sort((a, b) => a - b), lo = s[0], hi = Math.min(s[s.length - 1], lo * 1.12) || lo + 1;
+  const y = (m) => 2 + (1 - (Math.min(m, hi) - lo) / (hi - lo || 1)) * 20;
+  const d = v.map((m, i) => `${i ? "L" : "M"}${(2 + (i * 86) / (v.length - 1)).toFixed(1)},${y(m).toFixed(1)}`).join("");
+  return `<svg class="spark" viewBox="0 0 90 24"><path d="${d}" fill="none" stroke="var(--muted)" stroke-width="1.5"/><circle cx="88" cy="${y(v[v.length - 1]).toFixed(1)}" r="2.5" fill="#fff"/></svg>`;
+}
+async function vLive() {
+  const live = await fetch("api/live?laps=1&" + T()).then((r) => r.json());
+  const L = live.snapshot;
+  const on = L && Array.isArray(L.D) && L.D.length && live.at && Date.now() - live.at < LIVE_STALE_MS;
+  const conn = live.state === "open" ? `<span class="dot on"></span> verbonden` : `<span class="dot off"></span> ${esc(live.state || "geen verbinding")}`;
+  if (!on) {
+    return `<div class="card"><h2>Live timing <small>${TRACKS[state.track]}</small></h2>
+      <div class="empty">Er rijdt nu geen heat in ${esc(TRACKS[state.track])}.<br><span class="hint">Deze pagina ververst vanzelf zodra er gereden wordt${live.at ? ` · laatste ronde ${ago(live.at)}` : ""}.</span></div>
+      <div class="status" style="justify-content:center">${conn}</div></div>`;
+  }
+  liveTrack(L);
+  const byP = {};
+  for (const l of live.laps || []) (byP[l.p] = byP[l.p] || []).push(l);
+  const rows = [...L.D].sort((a, b) => (a.P || 99) - (b.P || 99));
+  const bests = rows.map((d) => Number(d.B)).filter((n) => n > 0);
+  const fastest = bests.length ? Math.min(...bests) : 0;
+  const lapNo = Math.max(0, ...rows.map((d) => Number(d.L) || 0));
+  const myName = me(), fol = follows();
+  const leadBest = Number(rows[0].B) || 0;
+  // gap/interval: van de live timing als die het stuurt, anders verschil in beste ronde
+  const gap = (d, i) => {
+    if (i === 0) return `<span class="muted">Leider</span>`;
+    if (d.G) return esc(d.G);
+    return leadBest && Number(d.B) ? fmtD(Number(d.B) - leadBest) : "–";
+  };
+  const gnum = (g) => { const n = parseFloat(String(g).replace(",", ".").replace("+", "")); return /lap|ronde|rnd/i.test(g) ? NaN : n; };
+  const intv = (d, i) => {
+    if (i === 0) return "";
+    if (d.I) return esc(d.I);
+    if (d.G) { const a = i === 1 ? 0 : gnum(rows[i - 1].G || ""), b = gnum(d.G); return isFinite(a) && isFinite(b) ? fmtD((b - a) * 1000) : "–"; }
+    const a = Number(rows[i - 1].B), b = Number(d.B);
+    return a && b ? fmtD(b - a) : "–";
+  };
+  const tr = rows.map((d, i) => {
+    const k = String(d.D || d.N), last = Number(d.T), best = Number(d.B);
+    const cls = last > 0 ? (last === fastest ? "purple" : last === best ? "green" : "yellow") : "";
+    const isMe = myName && d.N === myName, isFol = !isMe && fol.includes(d.N);
+    return `<tr class="click ${isMe ? "me" : isFol ? "fol" : ""} ${lt.flash.has(k) ? "flash" : ""}" onclick="go('driver',${js(d.N)})">
+      <td><span class="pos">${esc(d.P ?? "")}</span>${posArrow(d)}</td>
+      <td><span class="stripe" style="background:${kartColor(d.K)}"></span>${who(d.N)}</td>
+      <td class="hide-s">${kno(d.K)}</td>
+      <td class="r hide-s">${esc(d.L ?? "")}</td>
+      <td class="r"><span class="lt ${cls}">${fmt(last || null)}</span></td>
+      <td class="r"><span class="lt ${best && best === fastest ? "purple" : ""}">${fmt(best || null)}</span></td>
+      <td class="r">${gap(d, i)}</td>
+      <td class="r hide-s">${intv(d, i)}</td>
+      <td class="hide-s">${spark(byP[d.D] || [])}</td></tr>`;
+  }).join("");
+  // rondetijden per coureur in deze heat
+  const names = Object.fromEntries(rows.map((d) => [d.D, d.N]));
+  const series = rows.filter((d) => byP[d.D]).map((d, i) => ({
+    color: kartColor(d.K), dots: true, r: 2.5, width: myName && d.N === myName ? 3.5 : 1.8,
+    points: byP[d.D].filter((l) => l.n > 1).map((l) => ({ x: l.n, y: l.ms, tip: `${names[d.D]} · kart ${d.K}\nronde ${l.n}: ${fmt(l.ms)}` })),
+  }));
+  const light = L.light && LIGHT[L.light] ? `<span class="flag ${L.light}">${LIGHT[L.light]}</span>` : "";
+  return `
+  <div class="lbar"><div><div class="hn">${esc(L.N || "Heat")}</div><div class="lc">${esc(TRACKS[state.track])} · ${conn}</div></div>
+    <div class="lc">Ronde<b>${lapNo}</b></div>${light}<div class="clk">${fmtClock(L.C)}</div></div>
+  ${lt.fl ? `<div class="flb"><span class="lc">⏱ Snelste ronde</span>${who(lt.fl.name)}<span class="t">${fmt(lt.fl.ms)}</span><span class="muted">kart ${esc(lt.fl.kart || "")}</span></div>` : ""}
+  <div class="card"><h2>Timing <small>ververst elke 1,5 s · laatste update ${ago(live.at)}</small></h2>
+    <div class="tw tower"><table><thead><tr><th>Pos</th><th>Coureur</th><th class="hide-s">Kart</th><th class="r hide-s">Rnd</th><th class="r">Laatste</th><th class="r">Beste</th><th class="r">Gap</th><th class="r hide-s">Int</th><th class="hide-s">Verloop</th></tr></thead><tbody>${tr}</tbody></table></div>
+    <div class="legend"><span><i style="background:var(--purple)"></i>snelste ronde van de heat</span><span><i style="background:var(--green)"></i>eigen beste</span><span><i style="background:var(--yellow)"></i>langzamer dan eigen beste</span><span><i style="background:var(--red)"></i>jij</span><span><i style="background:var(--blue)"></i>gevolgd</span></div></div>
+  <div class="card" style="margin-top:16px"><h2>Rondetijden deze heat <small>zonder uitrijronde</small></h2>
+    ${chart(series, { h: 280, xFmt: (v) => "R" + v })}
+    ${live.heat ? `<div class="hint">Klik op een coureur voor zijn of haar analyse · <a href="#heat/${live.heat}" onclick="go('heat',${live.heat});return false">heat-analyse →</a></div>` : ""}</div>`;
 }
 
 async function vKarts() {
@@ -561,6 +691,7 @@ async function vConditions() {
 function vAbout() {
   return `<div class="card"><h2>Hoe werkt het?</h2><div class="hint" style="font-size:15px;max-width:820px">
   <p><b>Banen.</b> Kies rechtsboven de baan: <b>Assen</b> (Kart en Fun Fabriek, via SMS-Timing), <b>Emmen</b> (Karting Emmen, buitenbaan van 1084 m) of <b>Lelystad</b> (Kartcentrum Lelystad, buitenbaan van 735 m), beide via Apex Timing. Alle banen worden tegelijk gelogd en apart geanalyseerd. In Emmen en Lelystad is er geen indeling volwassenen/kids en geen vaste tijdgrens voor schone rondes.</p>
+  <p><b>Live timing.</b> Het tabblad <b>Live timing</b> toont de lopende heat zoals op de tv bij de baan: positie (met ▲▼ bij een inhaalactie), laatste en beste ronde, gap naar de leider, interval naar de coureur ervoor en het verloop van de laatste rondes. Paars = snelste ronde van de heat, groen = eigen beste, geel = langzamer. Jij staat rood gemarkeerd, gevolgde coureurs blauw. De pagina ververst elke 1,5 seconde. Stuurt de baan zelf geen gap mee, dan is de gap het verschil in beste ronde.</p>
   <p><b>Logger.</b> De server luistert dag en nacht naar de openbare live timing van beide banen en slaat elke voltooide ronde op: tijd, coureur, kart, rondenummer en positie. Hiervoor zijn geen inloggegevens nodig. Valt de verbinding weg, dan maakt hij vanzelf opnieuw verbinding.</p>
   <p><b>Schone rondes.</b> Niet elke ronde zegt iets over de kart. Daarom wordt elke ronde gemarkeerd: <span style="color:${FLAGC.out}">uitrijronde</span> (ronde 1), <span style="color:${FLAGC.yellow}">gele vlag</span> (meer dan de helft van het veld rijdt tegelijk &gt;15% langzamer), <span style="color:${FLAGC.slow}">langzaam</span> (&gt;12% boven het eigen niveau in die heat — spin of botsing — of in Assen langzamer dan 40,0 s) en <span style="color:${FLAGC.clean}">schoon</span>. Statistieken gebruiken alleen schone rondes.</p>
   <p><b>Regressie.</b> Elke schone ronde wordt verklaard als: <i>gemiddelde + niveau van de coureur + effect van de kart + effect van het rondenummer (banden opwarmen)</i>. Het model schat al die effecten tegelijk. Daardoor kun je karts eerlijk vergelijken (los van wie erin reed) en coureurs eerlijk vergelijken (los van welke kart ze kregen). Weer en baanomstandigheden tellen niet mee: in Assen is het een indoorbaan; in Emmen en Lelystad (buiten) kan regen de cijfers beïnvloeden.</p>
@@ -571,7 +702,7 @@ function vAbout() {
 }
 
 /* ---------------- router ---------------- */
-const VIEWS = { overview: vOverview, karts: vKarts, kart: vKart, drivers: vDrivers, driver: vDriver, heats: vHeats, heat: vHeat, conditions: vConditions, about: vAbout };
+const VIEWS = { overview: vOverview, live: vLive, karts: vKarts, kart: vKart, drivers: vDrivers, driver: vDriver, heats: vHeats, heat: vHeat, conditions: vConditions, about: vAbout };
 let renderSeq = 0;
 async function render() {
   const seq = ++renderSeq;
@@ -611,8 +742,9 @@ fromHash();
 Promise.all([refreshStatus(), loadMeta()]).then(() => { meta.photos = !!(summary && summary.photos); render(); });
 setInterval(loadMeta, 5 * 60000);
 setInterval(refreshStatus, 10000);
-// overzicht en live-heat elke 15 s verversen
+// overzicht en live-heat elke 15 s verversen, live timing elke 1,5 s
 setInterval(() => { if (state.view === "overview" || state.view === "heat") render(); }, 15000);
+setInterval(() => { if (state.view === "live" && !document.hidden) render(); }, 1500);
 </script>
 </body>
 </html>
